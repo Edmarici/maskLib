@@ -1946,6 +1946,11 @@ def CPS_hairpin_filter(chip, structure, resonators, bgcolor=None, **kwargs):
         'pad_length' : length of capacitive pad
         'pad_width'  : width of capacitive pad
         'taper_out'  : (length, w0, s0, w1, s1) for output taper
+        'w'          : CPS gap width, shared by the capacitive pad and the
+                       hairpin meander line (defaults to structure's 'w' default)
+        's'          : CPS strip width of the hairpin meander line (defaults to
+                       structure's 's' default; the pad's own strip width is
+                       set separately via 'pad_width')
     """
     def struct():
         if isinstance(structure, m.Structure):
@@ -1967,20 +1972,22 @@ def CPS_hairpin_filter(chip, structure, resonators, bgcolor=None, **kwargs):
 
         pad_length = res.get('pad_length', 2000)
         pad_width  = res.get('pad_width',  2000)
+        w = res.get('w', None)
+        s = res.get('s', None)
 
         # Leading capacitive pad
         CPS_circular_taper(chip, structure, *taper_in)
-        CPS_capPad(chip, structure, pad_length, pad_width)
+        CPS_capPad(chip, structure, pad_length, pad_width, w=w)
         CPS_circular_taper(chip, structure, *taper_out)
 
         # Hairpin shape
-        CPS_bend(chip, structure, angle=90,  CCW=False)
-        CPS_straight(chip, structure, length=straight1)
-        CPS_bend(chip, structure, angle=180)
-        CPS_straight(chip, structure, length=straight2)
-        CPS_bend(chip, structure, angle=180, CCW=False)
-        CPS_straight(chip, structure, length=straight3)
-        CPS_bend(chip, structure, angle=90)
+        CPS_bend(chip, structure, angle=90,  CCW=False, w=w, s=s)
+        CPS_straight(chip, structure, length=straight1, w=w, s=s)
+        CPS_bend(chip, structure, angle=180, w=w, s=s)
+        CPS_straight(chip, structure, length=straight2, w=w, s=s)
+        CPS_bend(chip, structure, angle=180, CCW=False, w=w, s=s)
+        CPS_straight(chip, structure, length=straight3, w=w, s=s)
+        CPS_bend(chip, structure, angle=90, w=w, s=s)
 
     # Trailing capacitive pad after the last resonator
     last = resonators[-1]
@@ -1988,9 +1995,10 @@ def CPS_hairpin_filter(chip, structure, resonators, bgcolor=None, **kwargs):
     taper_out = last.get('taper_out', (50, 6, 70, 6, 10))
     pad_length = last.get('pad_length', 2000)
     pad_width  = last.get('pad_width',  2000)
+    w = last.get('w', None)
 
     CPS_circular_taper(chip, structure, *taper_in)
-    CPS_capPad(chip, structure, pad_length, pad_width)
+    CPS_capPad(chip, structure, pad_length, pad_width, w=w)
     CPS_circular_taper(chip, structure, *taper_out)
 
 
