@@ -685,13 +685,19 @@ def JSingleProbePadLeads(chip,pos,padwidth=250,padheight=None,padradius=25,tab=F
 
 def FlagPads(chip, pos, flagw=1500, flagh=750, flagw2=None, flagh2=None, leadw=100, leadw2=None, leadh=2000, leadh2=None, separation=200, padradius=25,
              tab=False, tabShoulder=False, tabShoulderWidth=30, tabShoulderLength=80, tabShoulderRadius=None,
-             flipped=False, rotation=0, bgcolor=None, shunt=False, shunt_width=10, shunt_dist=150, shunt_length=400, shunt_side='left', **kwargs):
+             flipped=False, rotation=0, bgcolor=None, shunt=False, shunt_width=10, shunt_dist=150, shunt_length=400, shunt_side='left',
+             flag_offset=0, flag_offset2=None, **kwargs):
     '''
     Creates a pair of flag-shaped pad with rounded corners, and a JContactTab on one end (defaults to right)
     No overlap : XOR mode compatible
-    
+
     Optionally set tabShoulder to True to extend a thinner lead from the main contact pad.
     Optionally add a shunt between the pads.
+
+    flag_offset / flag_offset2 : shift the "flag" (wide pad) sideways (um) relative to
+        its default flush-left position with the lead, for the top/bottom pad
+        respectively (flag_offset2 defaults to flag_offset). 0 (the default) reproduces
+        the original flush-left geometry exactly. Not supported together with shunt=True.
     '''
     def struct():
         if isinstance(pos, m.Structure):
@@ -718,49 +724,110 @@ def FlagPads(chip, pos, flagw=1500, flagh=750, flagw2=None, flagh2=None, leadw=1
     leadwdiff = leadw2 - leadw
     leadhdiff = leadh2 - leadh
 
-    if flipped:
-        topflag = [
-            flagstart,
-            (flagstart[0] + leadw, flagstart[1]),
-            (flagstart[0] + leadw, flagstart[1] + leadh),
-            (flagstart[0] + flagw, flagstart[1] + leadh),
-            (flagstart[0] + flagw, flagstart[1] + flagh + leadh),
-            (flagstart[0], flagstart[1] + flagh + leadh),
-            flagstart
-        ]
+    if flag_offset2 is None:
+        flag_offset2 = flag_offset
+    if shunt and (flag_offset != 0 or flag_offset2 != 0):
+        raise ValueError('FlagPads: flag_offset/flag_offset2 with shunt=True is not implemented')
 
-        botflag = [
-            (flagstart[0], flagstart[1] - separation),
-            (flagstart[0], flagstart[1] - separation - flagh2 - leadh2),
-            (flagstart[0] + flagw2, flagstart[1] - separation - flagh2 - leadh2),
-            (flagstart[0] + flagw2, flagstart[1] - separation - leadh2),
-            (flagstart[0] + leadw2, flagstart[1] - separation - leadh2),
-            (flagstart[0] + leadw2, flagstart[1] - separation),
-            (flagstart[0], flagstart[1] - separation)
-        ]
+    if flipped:
+        if flag_offset == 0:
+            topflag = [
+                flagstart,
+                (flagstart[0] + leadw, flagstart[1]),
+                (flagstart[0] + leadw, flagstart[1] + leadh),
+                (flagstart[0] + flagw, flagstart[1] + leadh),
+                (flagstart[0] + flagw, flagstart[1] + flagh + leadh),
+                (flagstart[0], flagstart[1] + flagh + leadh),
+                flagstart
+            ]
+        else:
+            # flag shifted sideways from the lead's flush-left default: needs
+            # two extra vertices (lead top-left / flag bottom-left) to trace
+            # the step between the (unshifted) lead and the (shifted) flag -
+            # at flag_offset==0 those two points coincide, which is why this
+            # is a separate branch rather than always-on (a duplicate vertex
+            # there would be degenerate geometry).
+            topflag = [
+                flagstart,
+                (flagstart[0] + leadw, flagstart[1]),
+                (flagstart[0] + leadw, flagstart[1] + leadh),
+                (flagstart[0] + flagw + flag_offset, flagstart[1] + leadh),
+                (flagstart[0] + flagw + flag_offset, flagstart[1] + flagh + leadh),
+                (flagstart[0] + flag_offset, flagstart[1] + flagh + leadh),
+                (flagstart[0] + flag_offset, flagstart[1] + leadh),
+                (flagstart[0], flagstart[1] + leadh),
+                flagstart
+            ]
+
+        if flag_offset2 == 0:
+            botflag = [
+                (flagstart[0], flagstart[1] - separation),
+                (flagstart[0], flagstart[1] - separation - flagh2 - leadh2),
+                (flagstart[0] + flagw2, flagstart[1] - separation - flagh2 - leadh2),
+                (flagstart[0] + flagw2, flagstart[1] - separation - leadh2),
+                (flagstart[0] + leadw2, flagstart[1] - separation - leadh2),
+                (flagstart[0] + leadw2, flagstart[1] - separation),
+                (flagstart[0], flagstart[1] - separation)
+            ]
+        else:
+            botflag = [
+                (flagstart[0], flagstart[1] - separation),
+                (flagstart[0], flagstart[1] - separation - leadh2),
+                (flagstart[0] + flag_offset2, flagstart[1] - separation - leadh2),
+                (flagstart[0] + flag_offset2, flagstart[1] - separation - flagh2 - leadh2),
+                (flagstart[0] + flagw2 + flag_offset2, flagstart[1] - separation - flagh2 - leadh2),
+                (flagstart[0] + flagw2 + flag_offset2, flagstart[1] - separation - leadh2),
+                (flagstart[0] + leadw2, flagstart[1] - separation - leadh2),
+                (flagstart[0] + leadw2, flagstart[1] - separation),
+                (flagstart[0], flagstart[1] - separation)
+            ]
 
         # Fillet the corners of the top flag
         radius = 20
-        p1_top = cornerRound(topflag[0], 3, radius)
-        p2_top = cornerRound(topflag[1], 4, radius)
-        p3_top = cornerRound(topflag[2], 2, radius, clockwise=False)
-        p4_top = cornerRound(topflag[3], 4, radius)
-        p5_top = cornerRound(topflag[4], 1, radius)
-        p6_top = cornerRound(topflag[5], 2, radius)
+        if flag_offset == 0:
+            p1_top = cornerRound(topflag[0], 3, radius)
+            p2_top = cornerRound(topflag[1], 4, radius)
+            p3_top = cornerRound(topflag[2], 2, radius, clockwise=False)
+            p4_top = cornerRound(topflag[3], 4, radius)
+            p5_top = cornerRound(topflag[4], 1, radius)
+            p6_top = cornerRound(topflag[5], 2, radius)
 
-        topflag_fillet = p6_top + p5_top + p4_top + p3_top + p2_top + p1_top
-        
+            topflag_fillet = p6_top + p5_top + p4_top + p3_top + p2_top + p1_top
+        else:
+            p1_top = cornerRound(topflag[0], 3, radius)
+            p2_top = cornerRound(topflag[1], 4, radius)
+            p3_top = cornerRound(topflag[2], 2, radius, clockwise=False)
+            p4_top = cornerRound(topflag[3], 4, radius)
+            p5_top = cornerRound(topflag[4], 1, radius)
+            p6_top = cornerRound(topflag[5], 2, radius)
+            p7_top = cornerRound(topflag[6], 3, radius)
+            p8_top = cornerRound(topflag[7], 1, radius, clockwise=False)
+
+            topflag_fillet = p8_top + p7_top + p6_top + p5_top + p4_top + p3_top + p2_top + p1_top
+
 
         # Fillet the corners of the bottom flag
-        p1_bot = cornerRound(botflag[0], 2, radius)
-        p2_bot = cornerRound(botflag[1], 3, radius)
-        p3_bot = cornerRound(botflag[2], 4, radius)
-        p4_bot = cornerRound(botflag[3], 1, radius)
-        p5_bot = cornerRound(botflag[4], 3, radius, clockwise=False)
-        p6_bot = cornerRound(botflag[5], 1, radius)
+        if flag_offset2 == 0:
+            p1_bot = cornerRound(botflag[0], 2, radius)
+            p2_bot = cornerRound(botflag[1], 3, radius)
+            p3_bot = cornerRound(botflag[2], 4, radius)
+            p4_bot = cornerRound(botflag[3], 1, radius)
+            p5_bot = cornerRound(botflag[4], 3, radius, clockwise=False)
+            p6_bot = cornerRound(botflag[5], 1, radius)
 
-        botflag_fillet = p6_bot + p5_bot + p4_bot + p3_bot + p2_bot + p1_bot
-        
+            botflag_fillet = p6_bot + p5_bot + p4_bot + p3_bot + p2_bot + p1_bot
+        else:
+            p1_bot = cornerRound(botflag[0], 2, radius)
+            p2_bot = cornerRound(botflag[1], 4, radius, clockwise=False)
+            p3_bot = cornerRound(botflag[2], 2, radius)
+            p4_bot = cornerRound(botflag[3], 3, radius)
+            p5_bot = cornerRound(botflag[4], 4, radius)
+            p6_bot = cornerRound(botflag[5], 1, radius)
+            p7_bot = cornerRound(botflag[6], 3, radius, clockwise=False)
+            p8_bot = cornerRound(botflag[7], 1, radius)
+
+            botflag_fillet = p8_bot + p7_bot + p6_bot + p5_bot + p4_bot + p3_bot + p2_bot + p1_bot
+
 
         if shunt:
             if shunt_side == 'left':
@@ -825,11 +892,17 @@ def FlagPads(chip, pos, flagw=1500, flagh=750, flagw2=None, flagh2=None, leadw=1
                     (flagstart[0] + leadw2/2 + slotposadjust[0], flagstart[1] - separation)
                     ]
                 # combined_flag = p1_top  + p1_bot + slot_points_bot + p6_bot + p5_bot + p4_bot + p3_bot + p2_bot  + p6_top + p5_top + p4_top + p3_top + p2_top + slot_points_top
-                
+
                 # on the top pad the slot points need to be drawn before the last fillet
-                top_flag_pad_points = p6_top + p5_top + p4_top + p3_top + p2_top + slot_points_top + p1_top 
+                if flag_offset == 0:
+                    top_flag_pad_points = p6_top + p5_top + p4_top + p3_top + p2_top + slot_points_top + p1_top
+                else:
+                    top_flag_pad_points = p8_top + p7_top + p6_top + p5_top + p4_top + p3_top + p2_top + slot_points_top + p1_top
                 # on the bottom pad the slot points are drawn last
-                bot_flag_pad_points = p6_bot + p5_bot + p4_bot + p3_bot + p2_bot  + p1_bot + slot_points_bot
+                if flag_offset2 == 0:
+                    bot_flag_pad_points = p6_bot + p5_bot + p4_bot + p3_bot + p2_bot + p1_bot + slot_points_bot
+                else:
+                    bot_flag_pad_points = p8_bot + p7_bot + p6_bot + p5_bot + p4_bot + p3_bot + p2_bot + p1_bot + slot_points_bot
                 
             else:
             #     combined_flag = p1_top  + p1_bot + p6_bot + p5_bot + p4_bot + p3_bot + p2_bot  + p6_top + p5_top + p4_top + p3_top + p2_top
