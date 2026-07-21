@@ -852,6 +852,192 @@ def Snailmon3D(chip,
                     #layer='DOSEARRAY'
                     )
 
+def SNAIL(chip,
+          startpoint=(1500, 2350),
+          pads=True,
+          snail=True,
+          FT=True,
+          leadw=200, leadh=4000, leadh2=2000,
+          flagw=1500, flagh=750, flagh2=None,
+          flag_offset=700, flag_offset2=None,
+          padseparation=200, padradius=25,
+          FT_startpoint=None,
+          FT_large_rect_length=5000, FT_large_rect_width=1000,
+          FT_small_rect_length=500, FT_small_rect_width=30,
+          FT_conductor_width=2, FT_X_offset=-450, FT_Y_offset=0,
+          FT_outer_radius=20, FT_inner_radius=10, FT_rotation=0,
+          n_junc=3, big_JJ_chain=True, small_JJ=True,
+          **kwargs):
+    '''
+    Standalone SNAIL device: an asymmetric pad pair (via FlagPads) feeding a
+    3-big-JJ + 1-small-JJ loop (via JJ_chain/smallJJ/half_loop_leads2, at
+    Snailmon3D's existing realistic sub-micron fab scale), plus an optional
+    nearby flux-transformer inductive coupler loop (flux_transformer).
+
+    This is the same underlying composition as Snailmon3D (see that
+    function), but with the pad and flux-transformer dimensions exposed as
+    top-level parameters instead of hardcoded, so a specific real design
+    (e.g. one already simulated in Ansys HFSS/Q3D) can be reproduced
+    directly. The defaults here come from translating one such design:
+
+    leadw/leadh/leadh2 : the two pads' narrow "wire" sections (width/length)
+        - an asymmetric pair by design (leadh != leadh2).
+    flagw/flagh/flagh2 : the big capacitor pad ("flag") at the far end of
+        each wire. flagh2 defaults to flagh (symmetric).
+    flag_offset/flag_offset2 : how far the big pad is shifted sideways from
+        the wire's own centerline (perpendicular to the pad axis), passed
+        through to FlagPads' flag_offset/flag_offset2 after converting from
+        "shift from the wire's centerline" to FlagPads' own "shift from its
+        flush-left default" convention: -(flagw-leadw)/2 + flag_offset.
+        flag_offset2 defaults to flag_offset.
+    padseparation : gap between the two wires' inner ends, where the actual
+        junction chain and loop leads sit (independent of leadw/flagw).
+    FT_* : flux_transformer dimensions (see that function). FT_startpoint
+        defaults to startpoint plus the same relative offset Snailmon3D
+        uses for its own (fixed-dimension) FT call - this is a reasonable
+        starting position, not a verified one; re-check against the real
+        coupling geometry (FT_dist/ftcouplerL in the source design) once
+        rendered.
+    n_junc/big_JJ_chain/small_JJ : junction-chain composition, passed
+        through with JJ_chain/smallJJ's own existing defaults for the
+        junction fab geometry itself (JJlength/JJwidth/bridgewidth/gap/...) -
+        override via **kwargs the same way Snailmon3D does, if needed.
+    '''
+    if flagh2 is None:
+        flagh2 = flagh
+    if flag_offset2 is None:
+        flag_offset2 = flag_offset
+    if FT_startpoint is None:
+        FT_startpoint = (startpoint[0] + 65, startpoint[1] - 150)
+
+    layer = kwargs.get('layer', 'SNAILMON')
+    bigfingerW = kwargs.get('bigfinger_width', 0.41)
+    smallfingerW = kwargs.get('smallfingerwidth', 0.21)
+    bridgewidth = kwargs.get('bridgewidth', 1.78)
+    bridgeW = kwargs.get('bridge_width', 0.91)
+    bridgeL = kwargs.get('bridgeL', 0.48)
+    largebridgeL = kwargs.get('largebridgeL', 0.4)
+    undercut = kwargs.get('undercut', 0.2)
+    gap = kwargs.get('gap', 0.48)
+    bridge_dose = kwargs.get('bridge_dose', 1)
+    undercut_dose = kwargs.get('undercut_dose', 1)
+    smallfinger_dose = kwargs.get('smallfinger_dose', 1)
+    bigfinger_dose = kwargs.get('bigfinger_dose', 1)
+    big_JJ_finger_dose = kwargs.get('big_JJ_finger_dose', 1)
+    big_JJ_finger_width = kwargs.get('big_JJ_finger_width', 0.41)
+    big_JJ_finger_length = kwargs.get('big_JJ_finger_length', 2.2)
+    homeplates = kwargs.get('homeplates', True)
+
+    # (flagw - leadw)/2 centers the flag on the wire by default; FlagPads'
+    # own flag_offset is a shift from ITS flush-left default (see that
+    # function), so subtracting that centering term converts our
+    # "shift from the wire's centerline" convention into FlagPads' own.
+    fp_flag_offset = flag_offset - (flagw - leadw) / 2
+    fp_flag_offset2 = flag_offset2 - (flagw - leadw) / 2
+
+    if pads:
+        FlagPads(chip,
+                 startpoint,
+                 leadw=leadw, leadh=leadh, leadh2=leadh2,
+                 flagw=flagw, flagh=flagh, flagh2=flagh2,
+                 flag_offset=fp_flag_offset, flag_offset2=fp_flag_offset2,
+                 flipped=True,
+                 separation=padseparation,
+                 padradius=padradius,
+                 shunt=False,
+                 tab=True,
+                 tabShoulder=False,
+                 layer=layer
+                 )
+
+    if snail:
+        if big_JJ_chain:
+            JJlength = float(big_JJ_finger_length)
+            JJwidth = float(big_JJ_finger_width)
+            yoffset = padseparation / 2 + n_junc / 2 * JJlength + largebridgeL
+            JJ_chain(chip, m.Structure(chip,
+                     start=(startpoint[0] + 42, startpoint[1] - yoffset), direction=90),
+                     n_junc_array=[n_junc],
+                     JJlength=JJlength,
+                     JJwidth=JJwidth,
+                     w=1.5,
+                     s=1.78,
+                     bridgewidth=bridgewidth,
+                     gap=0.4,
+                     bgcolor=None,
+                     CW=True,
+                     finalpiece=False,
+                     Jlayer='BIGJJFINGER_' + str(float(big_JJ_finger_dose)),
+                     Ulayer='BIGJJUNDERCUT_' + str(float(undercut_dose)),
+                     bridgelayer='BIGJJBRIDGE_' + str(float(bridge_dose)),
+                     padseparation=padseparation
+                     )
+        if small_JJ:
+            smallJJ(chip,
+                    m.Structure(chip, start=(startpoint[0] + 58.5, startpoint[1] - 100), direction=90),
+                    Jlayer='SJJLAYER',
+                    Ulayer='SMALLJJUNDERCUT_' + str(float(undercut_dose)),
+                    gap=gap,
+                    leadW=1,
+                    fingerL=1.5,
+                    bigfingerW=float(bigfingerW),
+                    smallfingerW=float(smallfingerW),
+                    bridgeW=bridgeW,
+                    bridgeL=bridgeL,
+                    undercut=undercut,
+                    smallfingerlayer='SMALLJJSMALLFINGER_' + str(float(smallfinger_dose)),
+                    bigfingerlayer='SMALLJJBIGFINGER_' + str(float(bigfinger_dose)),
+                    Undercutlayer='SMALLJJUNDERCUT_' + str(float(undercut_dose)),
+                    shiftlayer='SMALLJJSHIFT_' + str(float(kwargs.get('shift_dose', 1))),
+                    bridgelayer='SMALLJJBRIDGE_' + str(float(bridge_dose)),
+                    )
+
+        loopW = 15
+        loopLength = 17
+        bridge_length = largebridgeL
+        bigJJfinger_length = 2.2
+        smallJJ_finger_length = 1.5
+        smallJJ_bridge_length = bridgeL
+        looplength_R = (loopLength - 2 * smallJJ_finger_length - smallJJ_bridge_length) / 2
+        looplength_L = (loopLength - 3 * bigJJfinger_length - 2 * bridge_length) / 2
+        leadW = 1
+        loopleads_dose = smallfinger_dose if small_JJ else big_JJ_finger_dose
+        half_loop_leads2(chip,
+                          m.Structure(chip, start=startpoint, direction=0),
+                          start=(50, -100),
+                          yflip=False,
+                          leadL=100, leadW=leadW, loopW=loopW, looplength_R=looplength_R, looplength_L=looplength_L,
+                          contactpads=homeplates, contactW=20, contactL=10, wedgeL=10, shift=True, shiftW=0.5,
+                          layer='LOOP_' + str(loopleads_dose),
+                          contact_to_probe_leads=True, contact_to_probe_leads_Length=130, homeplates=homeplates
+                          )
+        half_loop_leads2(chip,
+                          m.Structure(chip, start=startpoint, direction=0),
+                          start=(50, -100),
+                          yflip=True,
+                          leadL=100, leadW=leadW, loopW=loopW, looplength_R=looplength_R, looplength_L=looplength_L,
+                          contactpads=homeplates, contactW=20, contactL=10, wedgeL=10, shift=True, shiftW=0.5,
+                          layer='LOOP_' + str(loopleads_dose),
+                          contact_to_probe_leads=True, contact_to_probe_leads_Length=130
+                          )
+
+    if FT:
+        flux_transformer(chip,
+                          startpoint=FT_startpoint,
+                          large_rect_length=FT_large_rect_length,
+                          large_rect_width=FT_large_rect_width,
+                          small_rect_length=FT_small_rect_length,
+                          small_rect_width=FT_small_rect_width,
+                          conductor_width=FT_conductor_width,
+                          Y_offset=FT_Y_offset,
+                          X_offset=FT_X_offset,
+                          outer_radius=FT_outer_radius,
+                          inner_radius=FT_inner_radius,
+                          rotation=FT_rotation,
+                          layer='FT'
+                          )
+
+
 def SQUIDCoupler(chip, structure, pad_width=800, pad_height=1400, pad_separation=200,
                   loop_width=30, junction_kwargs=None, bgcolor=None, **kwargs):
     '''
