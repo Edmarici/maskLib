@@ -336,9 +336,8 @@ class Fast_Flux_Full(m.Chip):
 
     
         c4 = CPS_structure(self,self.chipSpace((40000,2900)),direction=180,w=6,strip=10,radius=100)
-        c5= CPS_structure(self,self.chipSpace((42000,2900)),direction=180,w=6,strip=10,radius=100)
-        c6= CPS_structure(self,self.chipSpace((40000,3200)),direction=180,w=6,strip=10,radius=100)
 
+        cps_w, cps_s = 3, 5
 
         #define the transmon (transmon pads and manhattan junction)
         #these numbers copied from Kevin's files
@@ -348,7 +347,10 @@ class Fast_Flux_Full(m.Chip):
         # Taper from the CPS stripline width (10) up to 100 um, then the pad
         # connects directly to that 100 um taper end - the pad is meant to be
         # much wider than the taper, not smoothly width-matched to it.
-        pad_taper = {'taper_in': (50, 6, 10, 6, 100), 'taper_out': (50, 6, 100, 6, 10)}
+        # w/s match the rest of this chip's CPS lines (CPS_structure's own
+        # w=6,strip=10 defaults) - shared here as explicit, adjustable
+        # parameters rather than relying on the structure's implicit defaults.
+        pad_taper = {'taper_in': (50, cps_w, cps_s, cps_w, 100), 'taper_out': (50, cps_w, 100, cps_w, cps_s), 'w': cps_w, 's': cps_s}
         resonators = [
             {'pad_length': 4000, 'pad_width': 2200, **pad_taper},
             {'pad_length': 4000, 'pad_width': 2200, **pad_taper},
@@ -360,20 +362,19 @@ class Fast_Flux_Full(m.Chip):
         #CPW_taper_pos(self, c4, length=300, w0=50, s0=10, w1=0, s1=150, gnd_width=100)
         #CPW_stub_open_pos(self, c4, length=150, w=0, s=150, gnd_width=100, flipped=True)
         
-        CPW_launcher(self, c4)
         
         Double_Y_balun(self,c4,arm_length=500, arm_width=300,
-                   w_cps=6, w_cpw=2, s_cps=100, s_cpw=8,
+                   w_cps=cps_w, w_cpw=2, s_cps=100, s_cpw=8,
                     rotation=180,)
         #SlotToCPS_taper(self, c4, offset=20,slot_s1=10)
-        CPS_taper(self,c4, length=300, w0=6, s0=(300-6)/2, w1=6, s1=10)
-        CPS_straight(self,c4, 2000)
+        CPS_taper(self,c4, length=300, w0=cps_w, s0=(300-6)/2, w1=cps_w, s1=cps_s)
+        CPS_straight(self,c4, 2000, w=cps_w, s=cps_s)
         CPS_hairpin_filter(self, c4, resonators)
 
         # Thinner CPS line approaching the flux loop (was w=6,s=10 to match the
         # filter/pads; narrowed down for the final run into the loop).
-        thin_w, thin_s = 3, 5
-        CPS_straight(self, c4, 3000, w=thin_w, s=thin_s)
+        
+        CPS_straight(self, c4, 3000, w=cps_w, s=cps_s)
 
         # Flux bias loop: the two CPS conductors themselves diverge and
         # reconverge to form the loop (CPS_loop), rather than a separate
@@ -385,7 +386,7 @@ class Fast_Flux_Full(m.Chip):
         # with the SQUID's own pads.
         loop_width, loop_height, loop_radius = 100, 50, 15
         CPS_loop(self, c4, loop_width=loop_width, loop_height=loop_height,
-                 w=thin_w, s=thin_s, radius=loop_radius)
+                 w=cps_w, s=cps_s, radius=loop_radius)
 
         # SQUID coupler (Fig. 10(b,c)) - a separate, independent structure (its
         # capacitive pads couple to the 3D cavity, not to this flux line). Placed
