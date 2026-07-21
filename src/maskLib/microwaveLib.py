@@ -2036,6 +2036,348 @@ def CPS_patch_filter(chip, structure, resonators, bgcolor=None, **kwargs):
             CPS_straight(chip, structure, connector_length, w=gap, s=connector_width, bgcolor=bgcolor, **kwargs)
 
 
+def tapped_hairpin_filter(chip, structure, n_poles=4,
+                           arm_length=4330, hairpin_width=2000, line_width=500,
+                           gap=None, coupling_gaps=(333.8, 461.8, 333.8),
+                           tap_point=486.1, tap_width=399.6,
+                           length_trim=0.0, flip_alternate=True,
+                           tap_lead=100, tap_taper_length=50, bgcolor=None, **kwargs):
+    """
+    Parameterized tapped hairpin-line CPW bandpass filter: n_poles folded
+    half-wave resonators, edge-coupled side by side, with tapped I/O
+    coupling on the first and last resonator (Wong, IEEE Trans. MTT 1979;
+    Hong & Lancaster ch. 5 tapped-line design).
+
+    Dimensions (arm_length, hairpin_width, coupling_gaps, tap_point,
+    tap_width) are taken directly rather than derived from f0/eps_eff -
+    this matches a Nuhertz Filter Solutions synthesis run (microstrip, Si,
+    500um) that hands over topology + starting physical dimensions
+    directly. Two caveats carried over from that synthesis, both out of
+    scope to resolve here:
+      - our actual stack has NO backside metal, so this is really a CPW
+        structure (center conductor + gap slots on the same top metal
+        layer), not microstrip. Nuhertz's output has no equivalent to a
+        CPW gap - `gap` must be picked/tuned independently of the
+        synthesis.
+      - even with a gap chosen, the synthesized lengths/couplings assume a
+        microstrip field distribution and will need HFSS re-extraction
+        once the real (bare-chip, package-grounded) environment is
+        modeled.
+    Treat every dimension here as a placeholder pending that HFSS pass.
+
+    structure : positioned/oriented like any other CPW composite call. Its
+        `.start` is resonator 0's open tip (arm A) and `.direction`
+        defines the arm axis - it may be any angle, not just +/-90 (e.g.
+        direction=0 lays the array out with arms along the chip's X axis,
+        stacking along Y, matching a "hairpins across the width" layout).
+        Successive resonators stack along the perpendicular axis
+        (structure's local "direction - 90"), alternating arm-forward/
+        arm-backward orientation (see flip_alternate) so adjacent arms
+        face each other in the standard hairpin-ladder arrangement.
+    n_poles : number of hairpin resonators (poles).
+    arm_length : straight length (um) of each hairpin arm.
+    hairpin_width : outer edge-to-edge extent (um) of one hairpin's two
+        arms (center-to-center arm spacing + line_width). Sets the U-bend
+        radius as (hairpin_width - line_width) / 2.
+    line_width : CPW center conductor width (um) of the main resonator/
+        feed line.
+    gap : CPW gap width (um) for the main line. Defaults to structure's
+        own 's' default if not given - see the no-backside-metal caveat
+        above; this has no Nuhertz equivalent and needs independent
+        tuning.
+    coupling_gaps : edge-to-edge gap (um) between adjacent hairpins' facing
+        arms. Must have length n_poles-1.
+    tap_point : distance (um) from the U-bend ("joint") to the I/O tap,
+        measured along the arm. Resonator 0 is tapped on arm A (the arm
+        ending at the joint, i.e. tap_point measured back from arm A's own
+        open tip works out to arm_length - tap_point from that open tip);
+        resonator n_poles-1 is tapped on arm B (the arm starting at the
+        joint, so tap_point there is measured directly from where the
+        U-bend ends). Tapping each end resonator on its OWN outer arm
+        (arm A is resonator 0's outer/edge-facing arm; arm B is resonator
+        n_poles-1's outer/edge-facing arm - see outward_branch in the
+        source) is what makes the two taps literal mirror images of each
+        other, each escaping toward its own edge of the array with no
+        risk of crossing its sibling arm. Must clear the tee junction's
+        own footprint on both sides - see tap_width below; the function
+        raises ValueError if it doesn't.
+    tap_width : CPW center conductor width (um) of the tap branch itself,
+        applied via a short taper immediately after the tee (see
+        tap_taper_length) rather than at the tee junction itself.
+        CPW_tee's own corner geometry (CurveRect/InsideCurve fillets) is
+        keyed off the main line's width regardless of its w1 argument, so
+        branching directly at tap_width whenever tap_width != line_width
+        leaves a real, visible gap in the gap-boundary polyline (confirmed
+        by isolating CPW_tee with generous clearance on all sides - it's
+        not a tight-fit artifact). Tapping AFTER the tee avoids ever
+        calling CPW_tee with mismatched widths. Because of this, the tee
+        itself always has an effective branch width of line_width, so
+        tap_point must clear a footprint of 2*(max(gap, gap-at-tee) +
+        line_width/2) - for line_width=500 that's >=500um regardless of
+        gap, well above Nuhertz's raw 486.1um tap_point; this dimension
+        needs to be re-derived in HFSS anyway, so bump it up rather than
+        fight the tee.
+    length_trim : global fractional length fudge factor for HFSS retuning
+        (arm_length *= (1 + length_trim)).
+    flip_alternate : standard hairpin ladder (True) alternates each
+        resonator's U-bend orientation so adjacent arms face each other.
+        False keeps every resonator in the same orientation.
+    tap_lead : short straight CPW lead (um) drawn right after each I/O tap
+        junction (and after the tap_taper_length transition to tap_width),
+        so the returned tap structures sit clear of the tee geometry
+        before the caller extends them further.
+    tap_taper_length : length (um) of the CPW_taper from line_width down
+        to tap_width, immediately after the tee (see tap_width above).
+
+    Returns
+    -------
+    (tap_in, tap_out) : new Structures at the input/output tap points,
+        ready to be extended (e.g. CPW_straight/CPW_bend/CPW_launcher)
+        toward the feed launcher and the downstream circuit (e.g. a
+        lowpass cleanup section / SNAIL) respectively. tap_in exits
+        resonator 0's arm A toward global "D0+90" (away from the rest of
+        the array, toward the array's near/start edge); tap_out exits
+        resonator n_poles-1's arm B toward global "D0-90" (also away from
+        the rest of the array, toward the array's far/growth-direction
+        edge) - literal mirror images of each other, each on its own
+        resonator's outer arm, each already facing away from the whole
+        array with no further redirect needed before continuing on to the
+        launcher / downstream circuit.
+    """
+    def struct():
+        if isinstance(structure, m.Structure):
+            return structure
+        elif isinstance(structure, tuple):
+            return m.Structure(chip, structure)
+        else:
+            return chip.structure(structure)
+
+    w = line_width
+    if gap is None:
+        try:
+            gap = struct().defaults['s']
+        except KeyError:
+            print('\x1b[33mgap not defined in ', chip.chipID, '!\x1b[0m')
+    s = gap
+    if bgcolor is None:
+        bgcolor = chip.wafer.bg()
+
+    if len(coupling_gaps) != n_poles - 1:
+        raise ValueError('coupling_gaps must have %d entries for n_poles=%d, got %d' %
+                          (n_poles - 1, n_poles, len(coupling_gaps)))
+    if hairpin_width <= line_width:
+        raise ValueError('hairpin_width (%s) must be greater than line_width (%s)' % (hairpin_width, line_width))
+
+    arm_length = arm_length * (1 + length_trim)
+    radius = (hairpin_width - line_width) / 2
+    tee_radius = s
+
+    # CPW_tee (branch_off=LEFT/RIGHT) leaves the main structure's direction
+    # unchanged but silently advances its position along that direction by
+    # 2*(max(tee_radius, s) + w1/2) - two internal +/-90 degree rotations
+    # that cancel out in direction but not in translation. This was
+    # negligible at the old (w=10, s=6) prototype scale but is significant
+    # at these Nuhertz-derived dimensions, so it must be subtracted from
+    # the straight run between the tee and the U-bend, or the resonator's
+    # developed length silently grows. w1=w (not tap_width) here - see the
+    # tap_width docstring entry for why the tee itself always branches at
+    # line_width.
+    tee_extra_length = 2 * (max(tee_radius, s) + w / 2)
+
+    tap_dist_from_open = arm_length - tap_point
+    if not (0 < tap_dist_from_open < arm_length):
+        raise ValueError('tap_point=%s places the tap outside the resonator arm (arm_length=%.1fum)' %
+                          (tap_point, arm_length))
+    # Both ends of the array get their tap on whichever arm is that
+    # resonator's OWN "outer" arm (arm A - the one drawn first, ending at
+    # the U-bend - for resonator 0; arm B - the one drawn after the U-bend -
+    # for resonator n_poles-1), so the tee footprint must clear the U-bend
+    # on BOTH sides of the tap point, not just the tap_point side: arm A's
+    # tee sits between the tap and the joint (needs tap_point >
+    # tee_extra_length), arm B's tee sits between the joint and the tap
+    # (needs tap_dist_from_open > tee_extra_length, since arm B's pre-tee
+    # run is tap_point and its post-tee run to the open tip is
+    # tap_dist_from_open - tee_extra_length).
+    if tap_point <= tee_extra_length or tap_dist_from_open <= tee_extra_length:
+        raise ValueError(
+            'tap_point=%s (and its complement %.1fum) is too close to the U-bend to fit '
+            'the tap tee junction on both the input and output arms '
+            '(tee footprint along the arm is %.1fum, set by gap=%s and line_width=%s - '
+            'the tee always branches at line_width, not tap_width, see the tap_width '
+            'docstring entry) - increase tap_point (or move it closer to arm_length/2), '
+            'or shrink gap/line_width, and re-check in HFSS' %
+            (tap_point, tap_dist_from_open, tee_extra_length, s, w))
+
+    D0 = struct().direction
+
+    def outward_branch(forward_i):
+        # branch_off=LEFT gives a tap in the current structure's own
+        # (direction+90) direction, RIGHT gives (direction-90) - validated
+        # empirically against CPW_tee's output. This same rule is reused
+        # for both arm A (pre-U-bend, direction D0 if forward_i else
+        # D0+180) and arm B (post-U-bend, direction D0+180 if forward_i
+        # else D0 - always the OPPOSITE of arm A's, since the 180 degree
+        # bend's net global displacement is always toward D0-90 regardless
+        # of forward_i, confirmed by extracting drawn geometry) taps. The
+        # SAME "LEFT if forward_i else RIGHT" choice therefore lands arm
+        # A's tap on global D0+90 and arm B's tap on global D0-90 - each
+        # is the direction away from that resonator's OTHER (sibling) arm,
+        # so neither ever crosses it. This is what makes the input tap
+        # (arm A of resonator 0, escaping D0+90 toward one edge) and the
+        # output tap (arm B of resonator n_poles-1, escaping D0-90 toward
+        # the other edge) literal mirror images of each other.
+        return const.LEFT if forward_i else const.RIGHT
+
+    def draw_tapped_arm(sA, forward_i, dist_to_tap, dist_after_tap, do_tap):
+        # Draws one arm's straight run from sA's current position, with an
+        # optional I/O tee tap inserted dist_to_tap along it. Shared by
+        # both arm A (dist_to_tap=tap_dist_from_open) and arm B
+        # (dist_to_tap=tap_point) - see outward_branch above for why the
+        # same branch formula is correct for both.
+        if not do_tap:
+            CPW_straight(chip, sA, dist_to_tap + dist_after_tap, w=w, s=s, bgcolor=bgcolor, **kwargs)
+            return None
+        CPW_straight(chip, sA, dist_to_tap, w=w, s=s, bgcolor=bgcolor, **kwargs)
+        branch = outward_branch(forward_i)
+        # w1=w (not tap_width): CPW_tee's corner fillets are keyed off
+        # the main line's width regardless of w1, so branching directly
+        # at a different tap_width leaves a real gap in the gap-boundary
+        # polyline (confirmed by isolating CPW_tee with generous
+        # clearance - not a tight-fit artifact). Get to tap_width via a
+        # taper immediately after the tee instead.
+        tap_struct = CPW_tee(chip, sA, w=w, s=s, w1=w, s1=s, radius=tee_radius,
+                              branch_off=branch, bgcolor=bgcolor, **kwargs)
+        if tap_taper_length > 0 and tap_width != w:
+            CPW_taper(chip, tap_struct, length=tap_taper_length, w0=w, s0=s, w1=tap_width, s1=s,
+                      bgcolor=bgcolor, **kwargs)
+        if tap_lead > 0:
+            CPW_straight(chip, tap_struct, tap_lead, w=tap_width, s=s, bgcolor=bgcolor, **kwargs)
+        CPW_straight(chip, sA, dist_after_tap, w=w, s=s, bgcolor=bgcolor, **kwargs)
+        return tap_struct
+
+    tap_in = None
+    tap_out = None
+    cum_pitch = 0.0
+    for i in range(n_poles):
+        forward_i = True if not flip_alternate else (i % 2 == 0)
+        direction_i = D0 if forward_i else D0 + 180
+        along_i = 0.0 if forward_i else arm_length
+        sA_start = struct().getPos((along_i, -cum_pitch))
+
+        sA = m.Structure(chip, start=sA_start, direction=direction_i, defaults=struct().defaults)
+        # length/r_out passed explicitly (r_out < length) rather than left to
+        # defaults: RoundRect's corner arc collapses onto the adjacent square
+        # corner (a duplicate/zero-length vertex) whenever r_out clamps to
+        # exactly equal the stub length - easy to hit with typical defaults.
+        CPW_stub_open(chip, sA, flipped=True, w=w, s=s, length=2*s, r_out=s, bgcolor=bgcolor, **kwargs)
+
+        tap_a = draw_tapped_arm(sA, forward_i, tap_dist_from_open,
+                                 arm_length - tap_dist_from_open - tee_extra_length,
+                                 do_tap=(i == 0))
+        if i == 0:
+            tap_in = tap_a
+
+        CPW_bend(chip, sA, angle=180, CCW=forward_i, radius=radius, w=w, s=s, bgcolor=bgcolor, **kwargs)
+
+        tap_b = draw_tapped_arm(sA, forward_i, tap_point,
+                                 arm_length - tap_point - tee_extra_length,
+                                 do_tap=(i == n_poles - 1))
+        if i == n_poles - 1:
+            tap_out = tap_b
+
+        CPW_stub_open(chip, sA, w=w, s=s, length=2*s, r_out=s, bgcolor=bgcolor, **kwargs)
+
+        if i < n_poles - 1:
+            cum_pitch += hairpin_width + coupling_gaps[i]
+
+    return tap_in, tap_out
+
+
+def stepped_impedance_lpf(chip, structure, n_sections=7,
+                           w_hi=100, w_lo=1800, w_feed=500,
+                           section_lengths=None, total_length=3500,
+                           gap=None, taper_length=20, bgcolor=None, **kwargs):
+    """
+    Placeholder stepped-impedance lowpass filter: n_sections alternating
+    high-Z (narrow, w_hi) / low-Z (wide, w_lo) CPW sections in series,
+    starting and ending on a high-Z section (standard stepped-impedance
+    LPF topology), short-tapered to/from w_feed at the ports.
+
+    This is UNSYNTHESIZED placeholder geometry - n_sections/w_hi/w_lo and
+    especially section_lengths are not yet tied to a real cutoff/
+    rejection target. Run a proper stepped-impedance synthesis (Nuhertz or
+    Hong & Lancaster tables) for the real cutoff and feed the resulting
+    section_lengths back in before trusting this for anything beyond
+    floorplanning.
+
+    structure : positioned/oriented like any other CPW composite call;
+        mutated in place to sit at the output port, ready for the caller
+        to continue (e.g. toward the SNAIL).
+    n_sections : number of alternating hi/lo-Z sections (should be odd, so
+        the filter starts and ends on a high-Z section).
+    w_hi, w_lo : CPW center conductor width (um) of the high-Z (narrow)
+        and low-Z (wide) sections.
+    w_feed : CPW center conductor width (um) of the line feeding in/out
+        (should match the upstream/downstream line, e.g. the bandpass
+        filter's line_width).
+    section_lengths : list of n_sections lengths (um). If None, splits
+        total_length evenly among all sections as a placeholder.
+    total_length : total placeholder length (um), used only when
+        section_lengths is None.
+    gap : CPW gap width (um), held constant across all sections (a real
+        design would vary it with width to hold an impedance target -
+        out of scope here). Defaults to structure's own 's' if not given.
+    taper_length : length (um) of the width transition between adjacent
+        sections. Deliberately short and fixed (rather than CPW_taper's
+        default ~30-degree auto-sized taper, which would run to ~1.5mm for
+        a w_hi/w_lo swing this large) - a "stepped" impedance filter wants
+        near-abrupt steps, not long smooth tapers eating into the section
+        lengths that actually set the cutoff.
+
+    Returns
+    -------
+    The (possibly newly-resolved) Structure at the output port, mutated in
+    place - use this (rather than the original `structure` argument, which
+    may have been a tuple/index) to continue building downstream.
+    """
+    def struct():
+        if isinstance(structure, m.Structure):
+            return structure
+        elif isinstance(structure, tuple):
+            return m.Structure(chip, structure)
+        else:
+            return chip.structure(structure)
+
+    if gap is None:
+        try:
+            gap = struct().defaults['s']
+        except KeyError:
+            print('\x1b[33mgap not defined in ', chip.chipID, '!\x1b[0m')
+    s = gap
+    if bgcolor is None:
+        bgcolor = chip.wafer.bg()
+
+    if section_lengths is None:
+        section_lengths = [total_length / n_sections] * n_sections
+    if len(section_lengths) != n_sections:
+        raise ValueError('section_lengths must have %d entries for n_sections=%d, got %d' %
+                          (n_sections, n_sections, len(section_lengths)))
+
+    s_ref = struct()
+
+    CPW_taper(chip, s_ref, length=taper_length, w0=w_feed, s0=s, w1=w_hi, s1=s, bgcolor=bgcolor, **kwargs)
+    prev_w = w_hi
+    for i, length in enumerate(section_lengths):
+        this_w = w_hi if i % 2 == 0 else w_lo
+        if this_w != prev_w:
+            CPW_taper(chip, s_ref, length=taper_length, w0=prev_w, s0=s, w1=this_w, s1=s, bgcolor=bgcolor, **kwargs)
+        CPW_straight(chip, s_ref, length, w=this_w, s=s, bgcolor=bgcolor, **kwargs)
+        prev_w = this_w
+    CPW_taper(chip, s_ref, length=taper_length, w0=prev_w, s0=s, w1=w_feed, s1=s, bgcolor=bgcolor, **kwargs)
+
+    return s_ref
+
+
 def CPS_loop(chip, structure, loop_width=None, loop_height=None, w=None, s=None, radius=None, bgcolor=None, **kwargs):
     """
     Splits a CPS line into two symmetric striplines that form a rectangular
