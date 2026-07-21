@@ -481,7 +481,9 @@ def half_loop_leads2(chip, structure, start=(0,0), yflip=False,leadL=100, leadW=
             mw.Strip_straight(chip, (structure.getPos(start)[0]-loopW/2, structure.getPos(start)[1]-(loopW-shiftW)/2), length=loopW, w=shiftW, layer=shiftlayer)
             mw.Strip_straight(chip, (structure.getPos(start)[0]-loopW/2-leadW, structure.getPos(start)[1]-leadW-(loopW+shiftW)/2), length=(loopW+leadW)/2, w=shiftW, layer=shiftlayer)
             mw.Strip_straight(chip, (structure.getPos(start)[0]+leadW/2, structure.getPos(start)[1]-leadW-(loopW+shiftW)/2), length=(loopW+leadW)/2, w=shiftW, layer=shiftlayer)
-    loop = dxf.polyline(points=loop_points, bgcolor=chip.wafer.bg(), layer=layer)
+    # bgcolor is not a valid dxfwrite Polyline attribute (unlike this
+    # project's own SolidPline) - a raw dxf.polyline() call can't take it.
+    loop = dxf.polyline(points=loop_points, layer=layer)
     loop.close()
     chip.add(loop)
 
@@ -628,7 +630,9 @@ def shunted_loop_leads(chip, structure, start=(0,0),leadL=100, leadW=1, loopW=15
     #     ]
 
 
-    loop = dxf.polyline(points=loop_points, bgcolor=chip.wafer.bg(), layer=layer)
+    # bgcolor is not a valid dxfwrite Polyline attribute (unlike this
+    # project's own SolidPline) - a raw dxf.polyline() call can't take it.
+    loop = dxf.polyline(points=loop_points, layer=layer)
     loop.close()
     chip.add(loop)
 
