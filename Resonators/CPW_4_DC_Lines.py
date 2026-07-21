@@ -30,7 +30,7 @@ from maskLib.utilities import cornerRound, doMirrored, rotate_2d
 
 w = m.Wafer(
     "CPW_4_DC_Lines",
-    "S:\G\Srushti_Selot\Moire_Circuits\dxf",
+    "DXF/",
     7000,
     7000,
     padding=2500,
