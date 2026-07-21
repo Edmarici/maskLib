@@ -2710,3 +2710,500 @@ def CPW_launcher_pos(chip, structure, l_taper=None, l_pad=0, l_gap=0, padw=300, 
                      gnd_width=gnd_width, bgcolor=bgcolor, **kwargs)
     CPW_taper_pos(chip, structure, length=l_taper, w0=padw, s0=pads, w1=w, s1=s,
                   gnd_width=gnd_width, bgcolor=bgcolor, **kwargs)
+    
+
+
+def LC_Filter_ind1(self, s3):
+    # INDUCTOR 1
+    CPW_straight(self, s3, 200)
+    st_len = 480
+    b_rad = 4
+    l_w = 5
+
+    Strip_straight(
+        self,
+        s3,
+        10,
+        layer="inductor",
+        linewidth=l_w,
+    )
+    Strip_bend(
+        self,
+        s3,
+        angle=90,
+        CCW=True,
+        radius=b_rad,
+        layer="inductor",
+        linewidth=l_w,
+    )
+    Strip_straight(
+        self,
+        s3,
+        240,
+        layer="inductor",
+        linewidth=l_w,
+    )
+    Strip_bend(self, s3, 180, False, radius=b_rad, layer="inductor", linewidth=l_w)
+
+    for i in range(28):
+
+        Strip_straight(
+            self,
+            s3,
+            st_len,
+            layer="inductor",
+            linewidth=l_w,
+        )
+        Strip_bend(self, s3, 180, True, radius=b_rad, layer="inductor", linewidth=l_w)
+        Strip_straight(
+            self,
+            s3,
+            st_len,
+            layer="inductor",
+            linewidth=l_w,
+        )
+
+        Strip_bend(self, s3, 180, False, radius=b_rad, layer="inductor", linewidth=l_w)
+
+    Strip_straight(
+        self,
+        s3,
+        480,
+        layer="inductor",
+        linewidth=l_w,
+    )
+    Strip_bend(self, s3, 180, True, radius=b_rad, layer="inductor", linewidth=l_w)
+    Strip_straight(
+        self,
+        s3,
+        232,
+        layer="inductor",
+        linewidth=l_w,
+    )
+
+    Strip_bend(self, s3, 90, False, radius=b_rad, layer="inductor", linewidth=l_w)
+    Strip_straight(
+        self,
+        s3,
+        10,
+        layer="inductor",
+        linewidth=l_w,
+    )
+    # ========================INDUCTOR 2 ==============================
+
+
+def LC_Filter_ind2(self, s3):
+    st_len = 480
+    b_rad = 4
+    l_w = 5
+    Strip_straight(
+        self,
+        s3,
+        510,
+        layer="inductor",
+        linewidth=l_w,
+    )
+
+    Strip_bend(
+        self,
+        s3,
+        angle=90,
+        CCW=True,
+        radius=b_rad,
+        layer="inductor",
+        linewidth=l_w,
+    )
+    Strip_straight(
+        self,
+        s3,
+        240,
+        layer="inductor",
+        linewidth=l_w,
+    )
+    Strip_bend(self, s3, 180, False, radius=b_rad, layer="inductor", linewidth=l_w)
+
+    for i in range(40):
+
+        Strip_straight(
+            self,
+            s3,
+            st_len,
+            layer="inductor",
+            linewidth=l_w,
+        )
+        Strip_bend(self, s3, 180, True, radius=b_rad, layer="inductor", linewidth=l_w)
+        Strip_straight(
+            self,
+            s3,
+            st_len,
+            layer="inductor",
+            linewidth=l_w,
+        )
+
+        Strip_bend(self, s3, 180, False, radius=b_rad, layer="inductor", linewidth=l_w)
+
+    Strip_straight(
+        self,
+        s3,
+        480,
+        layer="inductor",
+        linewidth=l_w,
+    )
+    Strip_bend(self, s3, 180, True, radius=b_rad, layer="inductor", linewidth=l_w)
+    Strip_straight(
+        self,
+        s3,
+        232,
+        layer="inductor",
+        linewidth=l_w,
+    )
+
+    Strip_bend(self, s3, 90, False, radius=b_rad, layer="inductor", linewidth=l_w)
+    Strip_straight(
+        self,
+        s3,
+        10,
+        layer="inductor",
+        linewidth=l_w,
+    )
+
+    # ================= RECTANGLE FOR INDUCTOR 1 ======================
+
+
+def LC_Filter_ind_rects1(self, x1, y1):
+    start2 = (x1, y1)
+
+    steps2 = [
+        (0, 250),  # up
+        (-492, 0),  # left
+        (0, -245),  # down
+        (0, -260),
+        (492, 0),
+    ]
+
+    # Convert steps into absolute points
+    points2 = [start2]
+    current2 = start2
+    for dx2, dy2 in steps2:
+        current2 = (current2[0] + dx2, current2[1] + dy2)
+        points2.append(current2)
+
+    # Create and close the polygon
+    self.add(
+        SolidPline(
+            insert=(0, 0),
+            points=points2,
+            layer="BASEMETAL",
+            bgcolor=self.bg("BASEMETAL"),
+            solidFillQuads=True,  # required to support subtraction
+        )
+    )
+
+    # ================= RECTANGLE FOR INDUCTOR 2 =======================
+
+
+def LC_Filter_ind_rects2(self, x2, y2):
+    start2 = (x2, y2)
+
+    steps2 = [
+        (0, 250),  # up
+        (-684, 0),  # left
+        (0, -245),  # down
+        (0, -260),
+        (684, 0),
+    ]
+
+    # Convert steps into absolute points
+    points2 = [start2]
+    current2 = start2
+    for dx2, dy2 in steps2:
+        current2 = (current2[0] + dx2, current2[1] + dy2)
+        points2.append(current2)
+
+    # Create and close the polygon
+    self.add(
+        SolidPline(
+            insert=(0, 0),
+            points=points2,
+            layer="BASEMETAL",
+            bgcolor=self.bg("BASEMETAL"),
+            solidFillQuads=True,  # required to support subtraction
+        )
+    )
+
+
+# ========================CAPACITOR 1 ==============================
+
+
+def LC_Filter_cap1(self, x, y):
+    cap1_pos = self.centered((x, y))
+    c1 = m.Structure(
+        self,
+        cap1_pos,
+        direction=180,
+    )
+    st_len = 235
+    l_w = 5
+    b_rad = 5
+
+    # upper half of the capacitor
+    Strip_straight(
+        self,
+        c1,
+        20,
+        w=5,
+        layer="BASEMETAL",
+    )
+    Strip_bend(
+        self,
+        c1,
+        angle=90,
+        CCW=True,
+        radius=b_rad,
+        layer="BASEMETAL",
+        w=l_w,
+    )
+    Strip_straight(
+        self,
+        c1,
+        st_len,
+        l_w,
+        layer="BASEMETAL",
+    )
+    Strip_bend(self, c1, 180, False, radius=b_rad, layer="BASEMETAL", w=l_w)
+
+    for i in range(22):
+        Strip_straight(
+            self,
+            c1,
+            st_len,
+            l_w,
+            layer="BASEMETAL",
+        )
+        Strip_bend(self, c1, 180, True, radius=b_rad, layer="BASEMETAL", w=l_w)
+        Strip_straight(
+            self,
+            c1,
+            st_len,
+            l_w,
+            layer="BASEMETAL",
+        )
+        Strip_bend(self, c1, 180, False, radius=b_rad, layer="BASEMETAL", w=l_w)
+
+    Strip_straight(
+        self,
+        c1,
+        st_len,
+        l_w,
+        layer="BASEMETAL",
+    )
+    Strip_bend(self, c1, 90, True, radius=b_rad, layer="BASEMETAL", w=l_w)
+    Strip_straight(
+        self,
+        c1,
+        20,
+        w=5,
+        layer="BASEMETAL",
+    )
+
+    # lower half of the capacitor
+    cap1_pos = self.centered((x, y - 10))
+
+    c1 = m.Structure(
+        self,
+        cap1_pos,
+        direction=180,
+    )
+    st_len = 235
+    l_w = 5
+    b_rad = 5
+    Strip_straight(
+        self,
+        c1,
+        20,
+        w=5,
+        layer="BASEMETAL",
+    )
+    Strip_bend(
+        self,
+        c1,
+        angle=90,
+        CCW=False,
+        radius=b_rad,
+        layer="BASEMETAL",
+        w=l_w,
+    )
+    Strip_straight(
+        self,
+        c1,
+        st_len,
+        l_w,
+        layer="BASEMETAL",
+    )
+    Strip_bend(self, c1, 180, True, radius=b_rad, layer="BASEMETAL", w=l_w)
+
+    for i in range(22):
+        Strip_straight(
+            self,
+            c1,
+            st_len,
+            l_w,
+            layer="BASEMETAL",
+        )
+        Strip_bend(self, c1, 180, False, radius=b_rad, layer="BASEMETAL", w=l_w)
+        Strip_straight(
+            self,
+            c1,
+            st_len,
+            l_w,
+            layer="BASEMETAL",
+        )
+        Strip_bend(self, c1, 180, True, radius=b_rad, layer="BASEMETAL", w=l_w)
+
+    Strip_straight(
+        self,
+        c1,
+        st_len,
+        l_w,
+        layer="BASEMETAL",
+    )
+    Strip_bend(self, c1, 90, False, radius=b_rad, layer="BASEMETAL", w=l_w)
+    Strip_straight(
+        self,
+        c1,
+        20,
+        w=5,
+        layer="BASEMETAL",
+    )
+
+    # # ========================CAPACITOR 2 ==============================
+
+
+def LC_Filter_cap2(self, x, y):
+    cap2_pos = self.centered((x, y))
+
+    c1 = m.Structure(
+        self,
+        cap2_pos,
+        direction=180,
+    )
+    st_len = 235
+    l_w = 2
+    b_rad = 6
+
+    # upper half of the capacitor
+    Strip_straight(
+        self,
+        c1,
+        20,
+        w=l_w,
+        layer="BASEMETAL",
+    )
+    Strip_bend(
+        self,
+        c1,
+        angle=90,
+        CCW=True,
+        radius=b_rad,
+        layer="BASEMETAL",
+        w=l_w,
+    )
+    Strip_straight(
+        self,
+        c1,
+        st_len,
+        l_w,
+        layer="BASEMETAL",
+    )
+    Strip_bend(self, c1, 180, False, radius=b_rad, layer="BASEMETAL", w=l_w)
+
+    for i in range(45):
+        Strip_straight(
+            self,
+            c1,
+            st_len,
+            l_w,
+            layer="BASEMETAL",
+        )
+        Strip_bend(self, c1, 180, True, radius=b_rad, layer="BASEMETAL", w=l_w)
+        Strip_straight(
+            self,
+            c1,
+            st_len,
+            l_w,
+            layer="BASEMETAL",
+        )
+        Strip_bend(self, c1, 180, False, radius=b_rad, layer="BASEMETAL", w=l_w)
+
+    Strip_straight(
+        self,
+        c1,
+        st_len,
+        l_w,
+        layer="BASEMETAL",
+    )
+    Strip_bend(self, c1, 90, True, radius=b_rad, layer="BASEMETAL", w=l_w)
+
+    # lower half of the capacitor
+    cap2_pos = self.centered((x, y - 10))
+
+    c1 = m.Structure(
+        self,
+        cap2_pos,
+        direction=180,
+    )
+    st_len = 235
+    l_w = 2
+    b_rad = 6
+    Strip_straight(
+        self,
+        c1,
+        20,
+        w=l_w,
+        layer="BASEMETAL",
+    )
+    Strip_bend(
+        self,
+        c1,
+        angle=90,
+        CCW=False,
+        radius=b_rad,
+        layer="BASEMETAL",
+        w=l_w,
+    )
+    Strip_straight(
+        self,
+        c1,
+        st_len,
+        l_w,
+        layer="BASEMETAL",
+    )
+    Strip_bend(self, c1, 180, True, radius=b_rad, layer="BASEMETAL", w=l_w)
+
+    for i in range(45):
+        Strip_straight(
+            self,
+            c1,
+            st_len,
+            l_w,
+            layer="BASEMETAL",
+        )
+        Strip_bend(self, c1, 180, False, radius=b_rad, layer="BASEMETAL", w=l_w)
+        Strip_straight(
+            self,
+            c1,
+            st_len,
+            l_w,
+            layer="BASEMETAL",
+        )
+        Strip_bend(self, c1, 180, True, radius=b_rad, layer="BASEMETAL", w=l_w)
+
+    Strip_straight(
+        self,
+        c1,
+        st_len,
+        l_w,
+        layer="BASEMETAL",
+    )
+    Strip_bend(self, c1, 90, False, radius=b_rad, layer="BASEMETAL", w=l_w)
+
