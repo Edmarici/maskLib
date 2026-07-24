@@ -164,6 +164,20 @@ cython_debug/
 
 dose*.txt
 *.dxf
+*.gds
 
 # generated mask outputs (DXF, GDS conversions, ldt dose tables, sweep xlsx)
 /DXF/
+
+# AEDT/HFSS project files and solver caches - every driver script in this
+# repo regenerates its own .aedt project and geometry fresh from Python each
+# run (see CLAUDE.md's HFSS section), so none of this is load-bearing.
+*.aedt
+*.aedt.*
+*.aedtresults/
+*.pyaedt/
+*.semaphore
+
+# HFSS analysis outputs (CSV/PNG/JSON/txt) - regeneratable by re-running the
+# corresponding driver script, same policy as DXF/GDS above.
+HFSS/
