@@ -7,8 +7,11 @@
 			"command": "pwsh",
 			"args": [
 				"-Command",
-				". .\\masklib\\Scripts\\Activate.ps1; python ${file}"
+				". '${workspaceFolder}\\.venv\\Scripts\\Activate.ps1'; python ${fileBasename}"
 			],
+			"options": {
+				"cwd": "${fileDirname}"
+			},
 			"problemMatcher": [],
 			"group": {
 				"kind": "build",
