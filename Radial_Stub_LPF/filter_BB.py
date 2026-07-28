@@ -5,6 +5,20 @@ filter_BB: quarter-wave open-stub band-block filter for the SNAIL
 beamsplitter pump/drive line's on-chip protection filtering - Rev 8 DESIGN
 PIVOT (Option A) away from the L30/L45/L60 lumped-LC ladder family.
 
+REV 13 (zero-placement, iterative): stub lengths are no longer pure
+synthesis theory - fan_length_correction_um()/_iterative_dl_um_seed()
+re-derive each stub's target length from the PREVIOUS PASS's own real HFSS
+first-light measurement (PREVIOUS_PASS_DASHBOARD_CSV/PREVIOUS_PASS_DIMS_JSON,
+currently pass 1's: Radial_Stub_LPF/HFSS/firstlight2_quickscan_pass1_*),
+since Rev 12 showed the whole composite response landing meaningfully high
+in frequency. Pass 1 seeded from Rev 12 directly (a one-time transition off
+the old flat fan correction, _rev12_dl_um_seed() in git history); every
+pass from 2 onward just projects off the immediately-preceding pass,
+uniformly, via simple f~1/L scaling. See fan_length_correction_um()/
+_iterative_dl_um_seed()'s own docstrings and DESIGN_NOTES Sec. 9-10 for the
+full derivation, including a sign inversion caught against an earlier draft
+of the fan-correction formula before implementing (pass 1 only).
+
 PRINCIPLE: an open-circuited stub of length l shorts the main line at
 f = c/(4*l*sqrt(eps_eff)) (quarter-wave interference null) and again at
 3f, 5f, ... The zero depends ONLY on length and eps_eff - not on any
@@ -100,6 +114,7 @@ fan_term's Rout here (300um) is far smaller than L60's synthesized fans
 check this file's own build/verification session ran against the real
 exported GDS (notebooks/BB_design_notes.md).
 """
+import csv
 import json
 import math
 import os
@@ -133,16 +148,121 @@ EPS_EFF = 5.681  # HFSS-extracted @ 6GHz (was 5.5 placeholder)
 
 W_MAIN = 70.0  # um, main line width (carried over from L60 Rev 7's W_HIZ)
 
+# ===============================================================================
+# Rev 13 zero-placement (iterative): re-derive stub lengths from the most
+# recent real HFSS first-light measurement of THIS EXACT geometry, not from
+# synthesis theory alone. Each pass reads the PREVIOUS pass's own dims JSON
+# (what was actually built) + dashboard CSV (what it actually measured) and
+# projects a new length via simple f~1/L scaling - see
+# _iterative_dl_um_seed() below. DESIGN_NOTES Sec. 9-10 has the full write-up.
+# ===============================================================================
+
+# K_FAN_UM/F_REF_GHZ are the ONE-TIME pass-1 anchor (Rev12->pass1 transition
+# only) - fan_length_correction_um() stays fixed at these values for every
+# LATER pass too (D1 in the Rev 13 pass-2 handoff: "don't re-tune the model
+# constants mid-iteration" - dl_um residual seeding, not the formula itself,
+# absorbs each pass's own remaining error, both signs, automatically).
+K_FAN_UM = 0.6
+F_REF_GHZ = 7.0  # anchor: S5 (7.0GHz) landed closest to prediction under the old flat correction (+2.4%)
+
+INPUT_SECTION_EXTRA_UM = 2000.0  # D2: lengthens the line between the input taper and S1's own tee
+
+# Points at the PREVIOUS pass's own outputs - bump these two names together
+# when starting a new pass (this pass reads pass 1's; a hypothetical pass 3
+# would read pass 2's, etc.).
+#
+# Rev 16 Step 0 FIX: Rev 15 bumped these to pass-3's own (hardened) output
+# intending "S1 frozen at v2, S2-S6 unchanged from pass-3" - but pointing
+# _iterative_dl_um_seed() at pass-3's own dashboard doesn't FREEZE S2-S6,
+# it projects ANOTHER f~1/L correction step from pass-3's own non-zero
+# landed-vs-target deltas (like seeding a hypothetical pass 4). Confirmed
+# by diff against filter_BB_dims_pass3.json: S3 target_length silently
+# drifted 7395.29um -> 7116.23um (S2's own pass-3 delta was exactly 0%, so
+# it happened to be a no-op there, masking the bug for that one stub).
+# Fix: point at nonexistent files so EVERY stub's seed defaults to 0 (see
+# _load_previous_pass_dashboard()/_load_previous_pass_dims()'s own
+# graceful-empty-dict handling) - every one of the 7 stubs is now a frozen
+# constant via its own manual dl_um in STUBS below, matching what
+# "baseline" actually means. Real pass-3 seeding data still lives in
+# filter_BB_dims_pass3.json/firstlight2_quickscan_pass3_dashboard_hardened.csv
+# on disk for reference - just no longer wired up as a live input.
+PREVIOUS_PASS_DIMS_JSON = 'NONE_frozen_v2_baseline_dims.json'
+PREVIOUS_PASS_DASHBOARD_CSV = 'NONE_frozen_v2_baseline_dashboard.csv'
+
+
+def _load_previous_pass_dashboard():
+    """Previous pass's own HFSS-measured dashboard - target_f_ghz/landed_f_ghz
+    per stub label. Returns {} with a loud warning if missing, so filter_BB.py
+    still runs standalone (dl_um seeds fall back to 0) without a prior run."""
+    path = os.path.join(os.path.dirname(__file__), 'HFSS', PREVIOUS_PASS_DASHBOARD_CSV)
+    if not os.path.exists(path):
+        print('\x1b[33mWARNING: %s not found - dl_um seeds default to 0 for every stub '
+              '(need the previous pass\'s own first-light dashboard as input)\x1b[0m' % path)
+        return {}
+    out = {}
+    with open(path, newline='') as f:
+        for row in csv.DictReader(f):
+            out[row['label']] = row
+    return out
+
+
+def _load_previous_pass_dims():
+    """Previous pass's own dims JSON - what was ACTUALLY BUILT (realized
+    target_length_um) per stub label, keyed the same way. Needed alongside
+    the dashboard because the iterative seed projects from the REAL built
+    length, not from any re-derivation of an older baseline (see
+    _iterative_dl_um_seed()'s own docstring)."""
+    path = os.path.join(os.path.dirname(__file__), 'HFSS', PREVIOUS_PASS_DIMS_JSON)
+    if not os.path.exists(path):
+        return {}
+    with open(path) as f:
+        data = json.load(f)
+    return {s['label']: s for s in data['stubs']}
+
+
+_PREV_DASHBOARD = _load_previous_pass_dashboard()
+_PREV_DIMS = _load_previous_pass_dims()
+
 # f_zero_GHz, width_um, side (+1/-1), fold n_par_runs, fan_term Rout_um
 # (0 = plain open end), dl_um (per-stub HFSS length trim, default 0 -
 # present in the table for future iteration, not exercised this pass).
 STUBS = [
-    dict(f=4.2, w=70.0, side=+1, n_par_runs=3, fan_term=0.0, dl_um=0.0),
-    dict(f=4.7, w=70.0, side=-1, n_par_runs=3, fan_term=300.0, dl_um=0.0),
-    dict(f=5.3, w=70.0, side=+1, n_par_runs=2, fan_term=300.0, dl_um=0.0),
-    dict(f=6.1, w=70.0, side=-1, n_par_runs=2, fan_term=300.0, dl_um=0.0),
-    dict(f=7.0, w=70.0, side=+1, n_par_runs=2, fan_term=300.0, dl_um=0.0),
-    dict(f=8.0, w=70.0, side=-1, n_par_runs=2, fan_term=0.0, dl_um=0.0),
+    # Rev 15 D1: S1 FROZEN at the "v2" baseline (T2-after config, Part I
+    # analysis) - nominal length x1.15 (7487.04 * 1.15 = 8610.10um), via the
+    # table's own manual dl_um knob (=0.15*7487.04=1123.06), NOT the
+    # iterative prev-pass seed (which now returns 0.0 for S1 anyway - see
+    # PREVIOUS_PASS_DASHBOARD_CSV comment above). Deliberately NOT
+    # iteratively re-seeded going forward: Track A found the pass 1-3
+    # trajectory unreliable for S1 specifically (its "notch" wasn't real),
+    # so chasing it further with the same f~1/L projection isn't
+    # trustworthy. This is a frozen point, to be revisited only by Track A's
+    # own dedicated small-perturbation attribution work.
+    dict(f=4.2, w=70.0, side=+1, n_par_runs=3, fan_term=0.0, dl_um=1123.06),
+    # Rev 16 Step 0: S2-S6 FROZEN at their exact pass-3 realized lengths -
+    # each dl_um below is copied verbatim from that stub's own recorded
+    # dl_um_seed in filter_BB_dims_pass3.json (S2's pass-3 delta was exactly
+    # 0%, so this reproduces its length exactly; S3-S6 had nonzero deltas,
+    # which is exactly what was silently drifting before this fix - see the
+    # PREVIOUS_PASS_* comment above). NOT live-reseeded - same "frozen
+    # baseline" discipline as S1's own dl_um above.
+    dict(f=4.7, w=70.0, side=-1, n_par_runs=3, fan_term=300.0, dl_um=3206.40664222529),
+    dict(f=5.3, w=70.0, side=+1, n_par_runs=2, fan_term=300.0, dl_um=1598.4552595998848, fold_dir=+1),  # Rev13: overrides
+        # auto -1 - at Rev13's much-longer length, -1 swung S3's fold up into S1's own territory (75um
+        # clearance, confirmed via direct pairwise vertex-distance calc); +1 clears it (2806um) instead
+    dict(f=6.1, w=70.0, side=-1, n_par_runs=2, fan_term=300.0, dl_um=583.162019879448),
+    dict(f=7.0, w=70.0, side=+1, n_par_runs=2, fan_term=300.0, dl_um=-4.414055730569999),
+    dict(f=8.0, w=70.0, side=-1, n_par_runs=2, fan_term=0.0, dl_um=-69.84352218755566),
+    # Rev 15: S7, NEW - splits the S1(4.2)/S2(4.7) gap, reinforcing the
+    # campaign's headline S21@4.5GHz criterion with a second, independent
+    # notch regardless of how Track A's S1 attribution resolves. side=-1
+    # ("left", per Structure.cloneAlong's relative newDirection - confirmed
+    # against the main line's own -90 direction) places it in the
+    # previously-idle straight run between S6 and the output taper, using
+    # real unused axial length rather than crowding any existing stub.
+    # n_par_runs=2 matches S3-S6's own choice (folds length into the axial
+    # band, keeps transverse reach ~1540um - comfortably inside this
+    # design's own width-budget slack).
+    dict(f=4.4, w=70.0, side=-1, n_par_runs=2, fan_term=300.0, dl_um=0.0),
 ]
 
 # um, default series-section length between stub junctions - "parameterize
@@ -325,22 +445,76 @@ def _fan_term_rin(w):
     return w / (2 * math.sin(math.radians(45.0)))
 
 
+def fan_length_correction_um(f_ghz, rout_um):
+    """Rev 13 D4: frequency-scaled fan-termination length correction,
+    replacing Rev 12's flat K_FAN_UM*Rout. Modeled as a fixed FRACTION of
+    guided wavelength (SMALLER absolute correction, i.e. a LONGER stub
+    kept, at low frequency) rather than a fixed absolute length - matching
+    the Rev 12 data: every fan-terminated stub landed ABOVE its target
+    under the flat correction, and a resonator landing high needs MORE
+    length, not less (f~1/L). NOTE: an earlier draft of this formula used
+    (F_REF_GHZ/f_ghz) - the OPPOSITE direction, which would make low-
+    frequency stubs SHORTER, not longer - caught and inverted against the
+    Rev 12 measurements before implementing (see git history/DESIGN_NOTES
+    Sec. 9 for the sign-check). Anchored at F_REF_GHZ (S5) so the
+    correction there stays ~unchanged from Rev 12's own flat value."""
+    return K_FAN_UM * rout_um * (f_ghz / F_REF_GHZ)
+
+
+def _iterative_dl_um_seed(spec, nominal_length_um, fan_correction_um):
+    """Rev 13 (iterative, pass 2+): this stub's own dl_um SEED, derived
+    directly from the PREVIOUS pass's own real HFSS measurement of the
+    ACTUAL geometry that was built and solved - NOT re-derived from any
+    older/stale baseline (pass 1's own _rev12_dl_um_seed() special-cased
+    the one-time Rev12-flat-correction transition; from pass 2 onward,
+    every pass just projects off the immediately-preceding one, uniformly).
+
+    f~1/L (same D1 principle as pass 1, applied iteratively): if the
+    previous pass's built length L_prev landed at f_prev instead of this
+    stub's own target, the new length that should land on target (by the
+    same local linear scaling) is L_new = L_prev * (f_prev / target_f).
+    Sign-symmetric by construction - a stub that landed LOW gets LESS
+    length, not just stubs landing HIGH (confirmed both signs occurred in
+    pass 1's own quick-scan: S1-S4 landed above target, S5/S6 landed at-or-
+    slightly-below - both directions flow through this one formula with no
+    special-casing). Returns 0 (no seed change) if no previous measurement
+    exists for this stub (S1 no longer needs pass 1's own baseline stand-in
+    - it found a real notch in pass 1, so it now uses this same real-
+    measurement path as every other stub)."""
+    label = '%.1fGHz' % spec['f']
+    target_f = spec['f']
+    prev_dash = _PREV_DASHBOARD.get(label)
+    prev_dims = _PREV_DIMS.get(label)
+    if prev_dash is None or not prev_dash.get('landed_f_ghz') or prev_dims is None:
+        return 0.0
+    landed_f = float(prev_dash['landed_f_ghz'])
+    l_prev_realized = float(prev_dims['target_length_um'])
+    l_new = l_prev_realized * (landed_f / target_f)
+    corrected_length_um = nominal_length_um - fan_correction_um
+    return l_new - corrected_length_um
+
+
 def _prepare_stub(spec):
     """Builds the derived fields (nominal/corrected/target length, fan
     r_in) for one STUBS entry - the ONLY place this math happens, base
     STUBS table stays verbatim as the reference (same discipline as
-    filter_L60.py's _apply_scales())."""
+    filter_L60.py's _apply_scales()). Rev 13: target_length now includes
+    the previous-pass-seeded dl_um trim (see _iterative_dl_um_seed()) ON
+    TOP OF the table's own dl_um (currently 0 for every entry - kept as
+    the manual fine-trim knob per the table's own original design intent)."""
     s = dict(spec)
     s['nominal_length'] = stub_quarter_wave_length_um(spec['f'], EPS_EFF)
     if spec['fan_term'] > 0:
-        # First-order length reduction for capacitive end-loading - per
-        # the handoff, a starting guess; HFSS trims via dl_um later.
-        s['corrected_length'] = s['nominal_length'] - 0.6 * spec['fan_term']
+        s['fan_correction_um'] = fan_length_correction_um(spec['f'], spec['fan_term'])
+        s['corrected_length'] = s['nominal_length'] - s['fan_correction_um']
         s['fan_term_rin'] = _fan_term_rin(spec['w'])
     else:
+        s['fan_correction_um'] = 0.0
         s['corrected_length'] = s['nominal_length']
         s['fan_term_rin'] = None
-    s['target_length'] = s['corrected_length'] + spec['dl_um']
+    s['dl_um_seed'] = _iterative_dl_um_seed(spec, s['nominal_length'], s['fan_correction_um'])
+    s['dl_um_total'] = spec['dl_um'] + s['dl_um_seed']
+    s['target_length'] = s['corrected_length'] + s['dl_um_total']
     return s
 
 
@@ -473,6 +647,12 @@ class FilterBBChip(m.Chip):
         envelope_pts += guarded_taper(self, s_main, INOUT_TAPER_LEN, PIN_PAD_WIDTH, W_MAIN,
                                        METAL_LAYER, label='input taper')
 
+        # --- Rev 13 D2: lengthen the input section before S1's own tee -
+        # gives S1 matched line upstream, cheaply ruling out "input taper
+        # not yet settled" as a contributor to S1's missing Rev 12 notch.
+        envelope_pts += guarded_straight(self, s_main, INPUT_SECTION_EXTRA_UM, W_MAIN, METAL_LAYER,
+                                          label='input section extension')
+
         # --- main line: stubs + series sections, in table order ---
         prepared_stubs = [_prepare_stub(spec) for spec in STUBS]
         next_fold_dir = {+1: +1, -1: +1}  # per-side-group alternation (see module docstring)
@@ -486,8 +666,18 @@ class FilterBBChip(m.Chip):
                                   '(need >=500um) - increase d_perp' % (label, D_PERP_UM, d_perp_clearance))
 
             run_gap = max(4 * spec['w'], _MIN_RUN_GAP_UM)
-            fold_dir = next_fold_dir[spec['side']]
+            # spec['fold_dir'] (optional, default None) overrides the automatic
+            # per-side-group alternation for ONE stub, when a same-side non-
+            # adjacent-in-table pair needs a specific fold direction to clear
+            # (the alternation only guarantees ADJACENT-in-table same-side
+            # stubs differ, not that either one points safely away from a
+            # same-side stub further down the table - see Rev 13 clearance fix).
+            # The automatic schedule still advances regardless, so any LATER
+            # stub without its own override still gets what the schedule would
+            # have given it anyway.
+            auto_fold_dir = next_fold_dir[spec['side']]
             next_fold_dir[spec['side']] *= -1
+            fold_dir = spec.get('fold_dir') if spec.get('fold_dir') is not None else auto_fold_dir
             fold_params = dict(d_perp=D_PERP_UM, n_par_runs=spec['n_par_runs'],
                                 run_gap=run_gap, fold_dir=fold_dir)
 
@@ -529,8 +719,15 @@ class FilterBBChip(m.Chip):
                        if spec['fan_term'] > 0 else 'open end')
             print('  %s: side=%+d w=%.1fum n_par_runs=%d %s  tee=(%.1f, %.1f)'
                   % (label, spec['side'], spec['w'], spec['n_par_runs'], fan_str, tee_pos[0], tee_pos[1]))
-            print('      length: nominal=%.2fum -> fan-corrected=%.2fum -> +dl_um(%.1f) -> target=%.2fum'
-                  % (spec['nominal_length'], spec['corrected_length'], spec['dl_um'], spec['target_length']))
+            if spec['fan_term'] > 0:
+                print('      fan correction: old(flat,Rev12-built)=%.1fum -> new(freq-scaled)=%.1fum '
+                      '(recovered=%+.1fum)'
+                      % (K_FAN_UM * spec['fan_term'], spec['fan_correction_um'],
+                         K_FAN_UM * spec['fan_term'] - spec['fan_correction_um']))
+            print('      length: nominal=%.2fum -> fan-corrected=%.2fum -> dl_um: table(%.1f) + '
+                  'prev-pass-seed(%+.1f) = %+.1f -> target=%.2fum'
+                  % (spec['nominal_length'], spec['corrected_length'], spec['dl_um'],
+                     spec['dl_um_seed'], spec['dl_um_total'], spec['target_length']))
             print('      realized centerline length=%.2fum (target-realized delta=%.4fum) '
                   '[d_perp=%.1fum clearance=%.1fum, run_gap=%.1fum -> bend_radius=%.1fum, run_length=%.2fum, fold_dir=%+d]'
                   % (realized_length_um, spec['target_length'] - realized_length_um, D_PERP_UM, d_perp_clearance,
@@ -585,6 +782,8 @@ class FilterBBChip(m.Chip):
                 dict(label=label, f_target_ghz=spec['f'], w_um=spec['w'], side=spec['side'],
                      n_par_runs=spec['n_par_runs'], fan_term_rout_um=spec['fan_term'],
                      fan_term_rin_um=spec['fan_term_rin'], dl_um=spec['dl_um'],
+                     fan_correction_um=spec['fan_correction_um'], dl_um_seed=spec['dl_um_seed'],
+                     dl_um_total=spec['dl_um_total'],
                      nominal_length_um=spec['nominal_length'], corrected_length_um=spec['corrected_length'],
                      target_length_um=spec['target_length'], realized_length_um=realized_length_um,
                      predicted_f_zero_ghz=predicted_f_zero, run_length_um=run_length,
