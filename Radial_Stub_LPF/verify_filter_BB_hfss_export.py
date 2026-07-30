@@ -224,6 +224,11 @@ def _build_pieces(fbb):
     # here too (see module docstring; same pattern as L60's own bridge).
     pts, pos = _rect_poly(pos, direction, 2 * fbb.INOUT_TAPER_LEN, fbb.W_MAIN, fbb.W_MAIN)
     yield 'InputTaperStraight', pts, None, None
+    # Rev 13 D2: lengthens the line between the input taper and S1's own tee
+    # - mirror fbb's own __init__ addition here too (see that file's own
+    # comment at the matching call site).
+    pts, pos = _rect_poly(pos, direction, fbb.INPUT_SECTION_EXTRA_UM, fbb.W_MAIN, fbb.W_MAIN)
+    yield 'InputSectionExtension', pts, None, None
 
     prepared_stubs = [fbb._prepare_stub(spec) for spec in fbb.STUBS]
     next_fold_dir = {+1: +1, -1: +1}  # per-side-group alternation - mirrors fbb's own __init__ state
@@ -232,8 +237,12 @@ def _build_pieces(fbb):
         label = '%.1fGHz' % spec['f']
         w = spec['w']
         run_gap = max(4 * w, fbb._MIN_RUN_GAP_UM)
-        fold_dir = next_fold_dir[spec['side']]
+        # Rev 13 clearance fix: spec['fold_dir'] optionally overrides the
+        # automatic alternation for one stub - mirror fbb's own __init__
+        # logic exactly (see that file's own comment at the matching site).
+        auto_fold_dir = next_fold_dir[spec['side']]
         next_fold_dir[spec['side']] *= -1
+        fold_dir = spec.get('fold_dir') if spec.get('fold_dir') is not None else auto_fold_dir
         CCW = fold_dir > 0
 
         bend_radius = (run_gap + w) / 2
@@ -246,6 +255,44 @@ def _build_pieces(fbb):
 
         b_dir = direction + spec['side'] * 90
         b_pos = pos  # branch spawns from the main line's CURRENT point (zero-offset clone) - main pos untouched
+
+        # Rev 17: geom='L' stubs replay l_stub()'s own sequence (perpendicular
+        # standoff -> ONE 90deg turn -> axial remainder), not folded_stub()'s.
+        # Mirrors filter_BB.py's own dispatch at the matching call site - this
+        # replay IS the HFSS geometry source, so it must track that dispatch
+        # exactly (a missing segment here silently solved the wrong geometry
+        # once already this campaign).
+        if spec.get('geom') == 'L':
+            bend_radius_l = fbb.L_STUB_BEND_RADIUS_UM
+            arc_len_l = math.pi * bend_radius_l / 2.0
+            axial_len = spec['target_length'] - fbb.L_STUB_D_PERP_UM - arc_len_l
+
+            pts, b_pos = _rect_poly(b_pos, b_dir, fbb.L_STUB_D_PERP_UM, w, w)
+            yield '%s_perp' % label, pts, None, None
+
+            arc_params = (b_pos, b_dir, 90, CCW, w, bend_radius_l)
+            yield '%s_Lbend' % label, _bend_poly(*arc_params), 'bend', arc_params
+            b_pos, b_dir = _bend_advance(b_pos, b_dir, 90, CCW, bend_radius_l)
+
+            pts, b_pos = _rect_poly(b_pos, b_dir, axial_len, w, w)
+            yield '%s_axial' % label, pts, None, None
+
+            if spec['fan_term'] > 0:
+                fan_rin = spec['fan_term_rin']
+                sagitta = fan_rin * (1 - math.cos(math.radians(90.0) / 2))
+                retreat = sagitta + 20.0
+                run_len_ft = retreat + 20.0
+                pts, fan_taper_end = _rect_poly(b_pos, b_dir, run_len_ft, w, w)
+                yield '%s_fan_taper' % label, pts, None, None
+                d_rad = math.radians(b_dir)
+                fan_tip = (fan_taper_end[0] - retreat * math.cos(d_rad),
+                           fan_taper_end[1] - retreat * math.sin(d_rad))
+                fan_params = (fan_tip, b_dir, spec['fan_term'], fan_rin, 90.0, w)
+                yield '%s_fan' % label, _fan_poly(*fan_params), 'fan', fan_params
+
+            pts, pos = _rect_poly(pos, direction, section['length'], fbb.W_MAIN, fbb.W_MAIN)
+            yield 'Line_after_%s' % label, pts, None, None
+            continue
 
         pts, b_pos = _rect_poly(b_pos, b_dir, fbb.D_PERP_UM, w, w)
         yield '%s_exit' % label, pts, None, None

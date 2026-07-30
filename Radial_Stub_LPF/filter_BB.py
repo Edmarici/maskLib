@@ -227,17 +227,39 @@ _PREV_DIMS = _load_previous_pass_dims()
 # (0 = plain open end), dl_um (per-stub HFSS length trim, default 0 -
 # present in the table for future iteration, not exercised this pass).
 STUBS = [
-    # Rev 15 D1: S1 FROZEN at the "v2" baseline (T2-after config, Part I
-    # analysis) - nominal length x1.15 (7487.04 * 1.15 = 8610.10um), via the
-    # table's own manual dl_um knob (=0.15*7487.04=1123.06), NOT the
-    # iterative prev-pass seed (which now returns 0.0 for S1 anyway - see
-    # PREVIOUS_PASS_DASHBOARD_CSV comment above). Deliberately NOT
-    # iteratively re-seeded going forward: Track A found the pass 1-3
-    # trajectory unreliable for S1 specifically (its "notch" wasn't real),
-    # so chasing it further with the same f~1/L projection isn't
-    # trustworthy. This is a frozen point, to be revisited only by Track A's
-    # own dedicated small-perturbation attribution work.
-    dict(f=4.2, w=70.0, side=+1, n_par_runs=3, fan_term=0.0, dl_um=1123.06),
+    # Rev 17 D2: S1 RETARGETED 4.2 -> 4.5GHz, and its accumulated dl_um RESET
+    # to zero. With S7 deleted (D1) S1 is the only element that can cover the
+    # SNAIL band, so it belongs ON the acceptance frequency rather than
+    # 300MHz below it. Three effects at once: (1) S1 gets SHORTER
+    # (8610.10 -> 6987.90um at dl_um=0, since it's unterminated so no fan
+    # correction applies); (2) less passband loading at the band edge (at
+    # 3.5GHz a 4.5GHz stub sits at theta~70deg, B~2.8, vs theta~75deg,
+    # B~3.7 for a 4.2GHz stub - roughly 2dB less shunt loading, for free);
+    # (3) the S21@4.5GHz criterion becomes directly addressable by one
+    # element. The dl_um reset is deliberate: that 1123.06um was accumulated
+    # against a feature Rev 14 showed was never S1's own resonance, so it
+    # carries no information worth keeping.
+    # Rev 17 B2: S1 uses the L geometry (geom='L', see l_stub()) - measured
+    # k_eff 0.891 vs 0.659 for the 3-run serpentine it used to have, i.e. far
+    # less fold cancellation. dl_um carries that geometry's OWN measured
+    # residual: V-L at a 6987.90um drawn length landed at 5.050GHz instead of
+    # its bare 4.500GHz (ratio 1.1222), so landing ON 4.5GHz needs
+    # 6987.90 * 1.1222 = 7841.97um -> dl_um = 7841.97 - 6987.90 = 854.07.
+    # This is an empirical correction from a real solve, deliberately NOT a
+    # theory value - the residual's own cause (eps_eff for a stub vs. the
+    # bare through-line it was extracted from, and/or tee loading) is a real
+    # open question, logged rather than chased.
+    # fold_dir=+1 turns the axial run toward -y (down-chip). Tried +y first
+    # (toward the input) on the theory it would clear S3 - it does not work:
+    # the 4973um axial run then overshoots the port plane at y=35000, ending
+    # at y=35207.8 and contaminating port 1's own cross-section (the geometry
+    # check caught it as a 3270um-wide port cut instead of 1000um). Turning
+    # -y is safe despite S3 sharing this side, because the 2500um standoff
+    # puts S1's axial run at x~6185 while S3's serpentine only reaches
+    # x~5190 - they never overlap transversely. Verified by the per-stub
+    # nearest-neighbour clearance check, not by inspection.
+    dict(f=4.5, w=70.0, side=+1, n_par_runs=3, fan_term=0.0, dl_um=854.07,
+         geom='L', fold_dir=+1),
     # Rev 16 Step 0: S2-S6 FROZEN at their exact pass-3 realized lengths -
     # each dl_um below is copied verbatim from that stub's own recorded
     # dl_um_seed in filter_BB_dims_pass3.json (S2's pass-3 delta was exactly
@@ -252,17 +274,13 @@ STUBS = [
     dict(f=6.1, w=70.0, side=-1, n_par_runs=2, fan_term=300.0, dl_um=583.162019879448),
     dict(f=7.0, w=70.0, side=+1, n_par_runs=2, fan_term=300.0, dl_um=-4.414055730569999),
     dict(f=8.0, w=70.0, side=-1, n_par_runs=2, fan_term=0.0, dl_um=-69.84352218755566),
-    # Rev 15: S7, NEW - splits the S1(4.2)/S2(4.7) gap, reinforcing the
-    # campaign's headline S21@4.5GHz criterion with a second, independent
-    # notch regardless of how Track A's S1 attribution resolves. side=-1
-    # ("left", per Structure.cloneAlong's relative newDirection - confirmed
-    # against the main line's own -90 direction) places it in the
-    # previously-idle straight run between S6 and the output taper, using
-    # real unused axial length rather than crowding any existing stub.
-    # n_par_runs=2 matches S3-S6's own choice (folds length into the axial
-    # band, keeps transverse reach ~1540um - comfortably inside this
-    # design's own width-budget slack).
-    dict(f=4.4, w=70.0, side=-1, n_par_runs=2, fan_term=300.0, dl_um=0.0),
+    # Rev 17 D1: S7 (4.4GHz) DELETED outright. Rev 16's real solve found it
+    # produced NO notch at all, while still costing ~2.5mm of line length and
+    # adding a passband shunt susceptance - so it was pure cost. Removing it
+    # shortens the filter and should improve passband ripple (confirmed or
+    # refuted by the v3 solve's own ripple-vs-v2+S7 comparison). Deleted
+    # rather than disabled/zero-lengthed, per D1, so nothing downstream can
+    # accidentally resurrect it.
 ]
 
 # um, default series-section length between stub junctions - "parameterize
@@ -277,6 +295,11 @@ assert len(SERIES_SECTIONS) == len(STUBS)
 
 # um - fold geometry, per the handoff ("d_perp 1000um, run_gap 400/500um").
 D_PERP_UM = 1000.0
+
+# Rev 17 B2: L-stub geometry (geom='L' in STUBS), measured to have the mildest
+# fold penalty of any real-bore geometry tested. See l_stub() and the S1 entry.
+L_STUB_D_PERP_UM = 2500.0      # perpendicular standoff before the single 90deg turn
+L_STUB_BEND_RADIUS_UM = 235.0  # same radius the fold variants use (run_gap 400 equivalent)
 
 DWL_MIN_LEN = 0.5  # um - see _MIN_LEN below (DWL 66+ degenerate-path guard)
 _MIN_LEN = DWL_MIN_LEN
@@ -586,6 +609,70 @@ def folded_stub(chip, s_main, spec, fold_params, layer, label=''):
     return pts, run_length, bend_radius, realized_length_um
 
 
+def l_stub(chip, s_main, spec, l_params, layer, label=''):
+    """
+    Rev 17 B2: SINGLE-BEND "L" stub - perpendicular standoff, one 90deg turn,
+    then the remaining length axially (parallel to the main line). NEW in
+    Rev 17, and the measured-best real-bore geometry.
+
+    WHY THIS EXISTS: filter_BB's own serpentine folds carry a large,
+    quantified electrical-length penalty in this groundless bore. Measured
+    directly (filter_BB_fold_experiment_HFSS.py, one stub alone on a matched
+    through-line, four geometries at an IDENTICAL 6987.9um drawn length, all
+    in the real 7000um bore):
+
+        3 parallel runs, 400um gap  -> null 6.830GHz, k_eff = 0.659
+        2 parallel runs, 1000um gap -> null 5.680GHz, k_eff = 0.792
+        L (this function)           -> null 5.050GHz, k_eff = 0.891
+
+    (k_eff = bare-quarter-wave frequency / measured null frequency; 1.0 would
+    mean the drawn length resonates where lambda/4 theory says.) The trend is
+    monotonic in both fold count and run gap - antiparallel adjacent runs
+    cancel, shortening the effective electrical length and pushing the
+    resonance UP. Note the resonance does NOT disappear at any fold depth
+    tested; it shifts, which is why several stubs' "missing" notches in
+    earlier passes were really notches sitting outside the dashboard's own
+    +-30%-of-target search window.
+
+    Even this geometry lands 12.2% high, so its own measured ratio is applied
+    as an explicit length correction at the call site (see S1's dl_um) rather
+    than pretended away. A 4th variant (fully straight, no bend) could not be
+    tested comparably - 6988um of perpendicular reach does not fit inside the
+    3500um-radius bore at all, and widening the bore to fit it changes the
+    effective permittivity enough (implied eps_eff 3.87 vs 5.681) to make its
+    number non-comparable.
+
+    Does NOT mutate s_main (spawns via cloneAlong). Returns the same 4-tuple
+    shape as folded_stub() so the caller's loop is geometry-agnostic.
+    """
+    d_perp = l_params['d_perp']
+    bend_radius = l_params['bend_radius']
+    if bend_radius < _MIN_RADIUS_UM:
+        raise ValueError('%s: bend radius %.2f um below the %.1fum apex guard' % (label, bend_radius, _MIN_RADIUS_UM))
+    CCW = l_params['fold_dir'] > 0
+    w = spec['w']
+
+    arc_len = math.pi * bend_radius / 2.0
+    axial_len = spec['target_length'] - d_perp - arc_len
+    if axial_len < _MIN_LEN:
+        raise ValueError('%s: L-stub axial run %.2f um is degenerate/negative - d_perp too large for '
+                          'this target_length=%.1fum' % (label, axial_len, spec['target_length']))
+
+    s_b = s_main.cloneAlong(vector=(0, 0), newDirection=spec['side'] * 90)
+    pts = guarded_straight(chip, s_b, d_perp, w, layer, label='%s perp' % label)
+    pts += guarded_bend(chip, s_b, 90, CCW, w, bend_radius, layer, label='%s bend' % label)
+    pts += guarded_straight(chip, s_b, axial_len, w, layer, label='%s axial' % label)
+
+    realized_length_um = d_perp + arc_len + axial_len
+
+    if spec['fan_term'] > 0:
+        fan_rin = spec['fan_term_rin']
+        pts += guarded_fan_taper(chip, s_b, w, w, fan_rin, 90.0, layer, label='%s fan_taper' % label)
+        pts += radial_fan(chip, s_b, spec['fan_term'], fan_rin, 90.0, w, layer, label='%s fan' % label)
+
+    return pts, axial_len, bend_radius, realized_length_um
+
+
 def straight_stub(chip, s_main, spec, layer, label=''):
     """Unfolded counterpart to folded_stub() - single-sided analog of
     filter_L60.py's branch_pair(). Not exercised by the v1 STUBS table
@@ -682,8 +769,17 @@ class FilterBBChip(m.Chip):
                                 run_gap=run_gap, fold_dir=fold_dir)
 
             tee_pos = s_main.start  # main line position where this stub branches off (before the call below)
-            verts, run_length, bend_radius, realized_length_um = folded_stub(
-                self, s_main, spec, fold_params, METAL_LAYER, label=label)
+            # Rev 17: geom='L' selects the single-bend L stub (see l_stub()'s
+            # own docstring for the measured fold-penalty comparison that
+            # motivated it); everything else keeps the serpentine.
+            if spec.get('geom') == 'L':
+                l_params = dict(d_perp=L_STUB_D_PERP_UM, bend_radius=L_STUB_BEND_RADIUS_UM,
+                                 fold_dir=fold_dir)
+                verts, run_length, bend_radius, realized_length_um = l_stub(
+                    self, s_main, spec, l_params, METAL_LAYER, label=label)
+            else:
+                verts, run_length, bend_radius, realized_length_um = folded_stub(
+                    self, s_main, spec, fold_params, METAL_LAYER, label=label)
             predicted_f_zero = predicted_f_zero_ghz(realized_length_um, EPS_EFF)
             stub_report.append((label, spec, run_length, bend_radius, d_perp_clearance,
                                  realized_length_um, fold_dir, tee_pos, predicted_f_zero))
