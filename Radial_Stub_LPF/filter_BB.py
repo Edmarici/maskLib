@@ -294,7 +294,46 @@ STUBS = [
         # clearance, confirmed via direct pairwise vertex-distance calc); +1 clears it (2806um) instead
     dict(f=6.1, w=70.0, side=-1, n_par_runs=2, fan_term=300.0, dl_um=583.162019879448),
     dict(f=7.0, w=70.0, side=+1, n_par_runs=2, fan_term=300.0, dl_um=-4.414055730569999),
-    dict(f=8.0, w=70.0, side=-1, n_par_runs=2, fan_term=0.0, dl_um=-69.84352218755566),
+    # ------- Rev 19 B2: S6 RETARGETED 8.0 -> 5.98GHz (was frozen since Rev 16) -------
+    # WHY IT WAS FREE TO MOVE: the Rev 19 full-range census (0.5-14GHz, the
+    # first sweep in this campaign wide enough to see them) found 12 nulls,
+    # not the 5 the Rev 18 probe's 3.5-9.0GHz window reported. Assigning one
+    # null per stub gives a k_eff sequence consistent with the fold
+    # experiment's independently measured values - notably S2 at 0.664
+    # against a measured 0.659 for a 3-run/400um fold - and puts S6's own
+    # null at 9.970GHz. That is ABOVE the 8.001GHz top of the mode comb, so
+    # S6 was contributing nothing to the acceptance spec; storage 7 (8.001)
+    # is covered by S5's 8.125 null, not by S6.
+    #
+    # WHERE IT GOES: the only remaining FLAG is storage 1 (5.792GHz, ~-18.1dB),
+    # caused by the 1.410GHz gap between S3's 5.480 and S4's 6.890 nulls.
+    # 5.98GHz is the midpoint of the two comb modes stranded in that gap
+    # (5.792 and 6.160), putting each ~185MHz from a null rather than
+    # bullseyeing one and leaving the other exposed. Resulting null spacings
+    # 0.500 and 0.910GHz, both inside the <=1.0GHz valley rule.
+    #
+    # LENGTH: S6's own measured k_eff = bare 8.1447 / null 9.970 = 0.81692, so
+    # landing 5.98GHz needs 6436.90um drawn. dl_um = 6436.90 - 5258.45
+    # (quarter-wave at 5.98GHz) = 1178.45. This is S6's OWN measured ratio,
+    # not an extrapolation from another stub's geometry - the mistake that
+    # put S1 3.9% low in Rev 18.
+    #
+    # NOT YET PROVEN: S6's ownership of 9.970 is inferred from k_eff
+    # consistency, not confirmed by deletion the way S1 (4.310) and S4
+    # (6.890) were. This edit doubles as that test - if 9.970 disappears and
+    # a null appears near 5.98, the assignment was right.
+    # fold_dir=-1 overrides the automatic +1 this stub would otherwise get.
+    # At its old 3861um length S6's runs were short enough that folding north
+    # was harmless; at 6437um they are not. Auto +1 folds S6 north while S4
+    # (side=-1, fold_dir=-1) folds south, so the two U-turns approach head-on
+    # over an identical x span (both side=-1 with the same d_perp/run_gap) and
+    # close to 88.5um - a hard fail against the 800um floor, and at that
+    # spacing in a groundless bore they would hybridise violently rather than
+    # act as two independent stubs. -1 turns S6 south into the empty run above
+    # the output taper instead. Same override, same reason, as S3's own
+    # Rev 13 fix. Caught by the all-pairs clearance check, not by inspection.
+    dict(f=5.98, w=70.0, side=-1, n_par_runs=2, fan_term=0.0, dl_um=1178.4494,
+         fold_dir=-1),
     # Rev 17 D1: S7 (4.4GHz) DELETED outright. Rev 16's real solve found it
     # produced NO notch at all, while still costing ~2.5mm of line length and
     # adding a passband shunt susceptance - so it was pure cost. Removing it
@@ -764,7 +803,7 @@ class FilterBBChip(m.Chip):
         # --- main line: stubs + series sections, in table order ---
         prepared_stubs = [_prepare_stub(spec) for spec in STUBS]
         next_fold_dir = {+1: +1, -1: +1}  # per-side-group alternation (see module docstring)
-        stub_report = []  # (label, spec, run_length, bend_radius, d_perp_clearance)
+        stub_report = []  # (label, spec, run_length, bend_radius, d_perp_clearance, ..., d_perp_um, run_gap)
 
         for spec, section in zip(prepared_stubs, SERIES_SECTIONS):
             label = '%.1fGHz' % spec['f']
@@ -811,8 +850,15 @@ class FilterBBChip(m.Chip):
                 verts, run_length, bend_radius, realized_length_um = folded_stub(
                     self, s_main, spec, fold_params, METAL_LAYER, label=label)
             predicted_f_zero = predicted_f_zero_ghz(realized_length_um, EPS_EFF)
+            # Rev 19: d_perp_um/run_gap are carried through this tuple, NOT re-derived
+            # at the print site. They used to be re-read from the module globals there,
+            # so a per-stub override printed as the default - S1 reported
+            # d_perp=1000um/run_gap=400um while actually drawn at 1200/1000. Report-only,
+            # but the same bug class as the Rev 8 fold_dir loop-variable leak and just as
+            # able to send a later reader down the wrong path.
             stub_report.append((label, spec, run_length, bend_radius, d_perp_clearance,
-                                 realized_length_um, fold_dir, tee_pos, predicted_f_zero))
+                                 realized_length_um, fold_dir, tee_pos, predicted_f_zero,
+                                 d_perp_um, run_gap))
             stub_vertex_sets.append((label, verts))
             envelope_pts += verts
             envelope_pts += guarded_straight(self, s_main, section['length'], W_MAIN, METAL_LAYER,
@@ -840,7 +886,7 @@ class FilterBBChip(m.Chip):
         print('-' * 70)
         print('Stub table (single-sided, axial fan terminators):')
         for (label, spec, run_length, bend_radius, d_perp_clearance, realized_length_um,
-             fold_dir, tee_pos, predicted_f_zero) in stub_report:
+             fold_dir, tee_pos, predicted_f_zero, d_perp_um_r, run_gap_r) in stub_report:
             fan_str = ('fan Rout=%.1fum (r_in=%.2fum, flush)' % (spec['fan_term'], spec['fan_term_rin'])
                        if spec['fan_term'] > 0 else 'open end')
             print('  %s: side=%+d w=%.1fum n_par_runs=%d %s  tee=(%.1f, %.1f)'
@@ -856,8 +902,8 @@ class FilterBBChip(m.Chip):
                      spec['dl_um_seed'], spec['dl_um_total'], spec['target_length']))
             print('      realized centerline length=%.2fum (target-realized delta=%.4fum) '
                   '[d_perp=%.1fum clearance=%.1fum, run_gap=%.1fum -> bend_radius=%.1fum, run_length=%.2fum, fold_dir=%+d]'
-                  % (realized_length_um, spec['target_length'] - realized_length_um, D_PERP_UM, d_perp_clearance,
-                     max(4 * spec['w'], _MIN_RUN_GAP_UM), bend_radius, run_length, fold_dir))
+                  % (realized_length_um, spec['target_length'] - realized_length_um, d_perp_um_r, d_perp_clearance,
+                     run_gap_r, bend_radius, run_length, fold_dir))
             print('      f_zero: target=%.3fGHz -> predicted-from-realized-length=%.3fGHz (delta=%.2f%%)'
                   % (spec['f'], predicted_f_zero, 100.0 * (predicted_f_zero - spec['f']) / spec['f']))
         print('-' * 70)
@@ -913,9 +959,10 @@ class FilterBBChip(m.Chip):
                      nominal_length_um=spec['nominal_length'], corrected_length_um=spec['corrected_length'],
                      target_length_um=spec['target_length'], realized_length_um=realized_length_um,
                      predicted_f_zero_ghz=predicted_f_zero, run_length_um=run_length,
-                     bend_radius_um=bend_radius, fold_dir=fold_dir, tee_pos_um=list(tee_pos))
+                     bend_radius_um=bend_radius, fold_dir=fold_dir, tee_pos_um=list(tee_pos),
+                     d_perp_um=d_perp_um_r, run_gap_um=run_gap_r)
                 for (label, spec, run_length, bend_radius, d_perp_clearance, realized_length_um,
-                     fold_dir, tee_pos, predicted_f_zero) in stub_report
+                     fold_dir, tee_pos, predicted_f_zero, d_perp_um_r, run_gap_r) in stub_report
             ],
         )
         dims_dir = os.path.join(os.path.dirname(__file__), 'HFSS')

@@ -235,6 +235,13 @@ DISCRETE_COUNT = int(round((DISCRETE_STOP_GHZ - DISCRETE_START_GHZ) / DISCRETE_S
 # single-stub windows - multi-freq adaptive isn't needed there).
 ADAPTIVE_FREQ_GHZ = 3.0
 
+# Rev 19: adaptive-pass tolerance, module-level so a caller can tighten it
+# without editing build_design(). Default 0.02 keeps every existing script
+# (the Rev 18 probe, the Rev 19 deletion/census runs) byte-identical in
+# behaviour; only the Rev 19 B3 confirmation run overrides it, to 0.005, to
+# match v3's own mesh quality for a fair scorecard comparison.
+MAX_DELTA_S = 0.02
+
 # Rev 13 D3: multi-frequency adaptive for the MAIN build, attempted first
 # (see module docstring); SINGLE_POINT_FALLBACK_GHZ is the handoff's own
 # pre-authorized fallback if the raw-COM multi-freq attempt fails.
@@ -581,7 +588,7 @@ def build_design(project, design_name, geom, sweep_specs, overwrite=True, adapti
     if adaptive == 'multi':
         setup_name = _try_multi_freq_adaptive_setup(
             design, 'FirstLight_Setup', MULTI_FREQ_ADAPTIVE_GHZ,
-            max_delta_s=0.02, max_passes=12, min_passes=3, min_converged=2,
+            max_delta_s=MAX_DELTA_S, max_passes=12, min_passes=3, min_converged=2,
             pct_refinement=30, basis_order=1)
     if setup_name is not None:
         setup = HFSS.HfssDMSetup(design, setup_name)
@@ -596,7 +603,7 @@ def build_design(project, design_name, geom, sweep_specs, overwrite=True, adapti
             print('  using single-point fallback @ %.2fGHz' % fallback_freq)
         setup = design.create_dm_setup(
             freq_ghz=fallback_freq, name='FirstLight_Setup',
-            max_delta_s=0.02, max_passes=12, min_passes=3, min_converged=2,
+            max_delta_s=MAX_DELTA_S, max_passes=12, min_passes=3, min_converged=2,
             pct_refinement=30, basis_order=1,
         )
     sweeps = {}

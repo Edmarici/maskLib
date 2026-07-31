@@ -31,7 +31,9 @@
       "tee_pos_um": [
         3450.0,
         30000.0
-      ]
+      ],
+      "d_perp_um": 1200.0,
+      "run_gap_um": 1000.0
     },
     {
       "label": "4.7GHz",
@@ -56,7 +58,9 @@
       "tee_pos_um": [
         3450.0,
         27500.0
-      ]
+      ],
+      "d_perp_um": 1000.0,
+      "run_gap_um": 400.0
     },
     {
       "label": "5.3GHz",
@@ -81,7 +85,9 @@
       "tee_pos_um": [
         3450.0,
         25000.0
-      ]
+      ],
+      "d_perp_um": 1000.0,
+      "run_gap_um": 400.0
     },
     {
       "label": "6.1GHz",
@@ -106,7 +112,9 @@
       "tee_pos_um": [
         3450.0,
         22500.0
-      ]
+      ],
+      "d_perp_um": 1000.0,
+      "run_gap_um": 400.0
     },
     {
       "label": "7.0GHz",
@@ -131,32 +139,36 @@
       "tee_pos_um": [
         3450.0,
         20000.0
-      ]
+      ],
+      "d_perp_um": 1000.0,
+      "run_gap_um": 400.0
     },
     {
-      "label": "8.0GHz",
-      "f_target_ghz": 8.0,
+      "label": "6.0GHz",
+      "f_target_ghz": 5.98,
       "w_um": 70.0,
       "side": -1,
       "n_par_runs": 2,
       "fan_term_rout_um": 0.0,
       "fan_term_rin_um": null,
-      "dl_um": -69.84352218755566,
+      "dl_um": 1178.4494,
       "fan_correction_um": 0.0,
       "dl_um_seed": 0.0,
-      "dl_um_total": -69.84352218755566,
-      "nominal_length_um": 3930.694178687601,
-      "corrected_length_um": 3930.694178687601,
-      "target_length_um": 3860.8506565000453,
-      "realized_length_um": 3860.8506565000453,
-      "predicted_f_zero_ghz": 8.1447215205177,
-      "run_length_um": 876.7196230548216,
+      "dl_um_total": 1178.4494,
+      "nominal_length_um": 5258.453750752643,
+      "corrected_length_um": 5258.453750752643,
+      "target_length_um": 6436.903150752643,
+      "realized_length_um": 6436.903150752643,
+      "predicted_f_zero_ghz": 4.885199092334331,
+      "run_length_um": 2164.7458701811206,
       "bend_radius_um": 235.0,
-      "fold_dir": 1,
+      "fold_dir": -1,
       "tee_pos_um": [
         3450.0,
         17500.0
-      ]
+      ],
+      "d_perp_um": 1000.0,
+      "run_gap_um": 400.0
     }
   ]
 }
