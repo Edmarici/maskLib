@@ -1,0 +1,62 @@
+======================================================================
+filter_BB first light - Rev 16 S7+v2 baseline confirmation
+======================================================================
+CAVEATS (see script docstring for full detail):
+  - bore modeled at 7000um (filter_BB.py convention) vs the 6985um figure used
+    elsewhere in this repo's history - ~0.2% tension, reconcile before Stage A
+  - chip modeled at 6900um wide inside the 7000um bore, no pocket (floats with a
+    gap) - real package has chip(7.000mm) >= bore(6.985mm), held in pockets
+  - 10MHz discrete steps UNDERESTIMATE null depths (real nulls are much sharper) -
+    valley/zero-location criteria are unaffected, but do not read depths as physical
+----------------------------------------------------------------------
+Dashboard (target | predicted-from-bare-length | landed | delta%-vs-target | delta%-vs-predicted):
+  delta%-vs-target is the PASS/FAIL basis (this pass's whole point - do the Rev-12-
+  measurement-seeded lengths land closer to target than Rev 12's did). delta%-vs-
+  predicted is diagnostic ONLY, and its own sign/size is EXPECTED to look different
+  from Rev 12: these stubs were deliberately built LONGER than the naive bare-formula
+  length for their target, betting on the real (fan-loaded/measurement-corrected)
+  structure landing on target where the bare formula alone would not - so a large
+  NEGATIVE delta%-vs-predicted here is the correction working as intended, not a flag.
+  4.5GHz    4.500 |  4.010 |  4.590 GHz |  +2.00% | +14.47%  (UNTERMINATED-clean-check, depth -63.3dB)
+  4.7GHz    4.700 |  3.217 |  4.270 GHz |  -9.15% | +32.75%  (fan-terminated, depth -49.6dB)
+  5.3GHz    5.300 |  4.252 | NO NOTCH FOUND (no local min <-15dB matched within 30% of target)  <<NO MATCH
+  6.1GHz    6.100 |  5.634 |  5.870 GHz |  -3.77% |  +4.19%  (fan-terminated, depth -62.6dB)
+  7.0GHz    7.000 |  7.300 |  6.810 GHz |  -2.71% |  -6.71%  (fan-terminated, depth -65.6dB)
+  8.0GHz    8.000 |  8.145 |  8.170 GHz |  +2.12% |  +0.31%  (UNTERMINATED-clean-check, depth -49.4dB)
+----------------------------------------------------------------------
+Inter-zero valleys (4.2-8.0GHz):
+  [4.200, 4.270]GHz: worst=-21.64dB @ 4.200GHz
+  [4.270, 4.590]GHz: worst=-29.28dB @ 4.380GHz
+  [4.590, 5.870]GHz: worst=-7.39dB @ 4.910GHz
+  [5.870, 6.810]GHz: worst=-30.86dB @ 6.210GHz
+  [6.810, 8.000]GHz: worst=-22.04dB @ 7.810GHz
+  [8.000, 8.170]GHz: worst=-23.17dB @ 8.000GHz
+S21@4.5GHz = -33.56dB
+----------------------------------------------------------------------
+Passband:
+  0.5GHz: -1.71dB
+  1.0GHz: -3.10dB
+  2.0GHz: -0.59dB
+  3.0GHz: -2.55dB
+  3.3GHz: -0.35dB
+  3.5GHz: -0.96dB
+3.3->3.5GHz sag = -0.60dB
+----------------------------------------------------------------------
+8-13GHz needles (>-30dB): ['8.470GHz(-11.4dB)', '10.300GHz(-17.8dB)', '11.925GHz(-1.2dB)']
+----------------------------------------------------------------------
+Full-sweep null count (0.5-13.0GHz): 8 real zeros vs 6 stubs (5 matched, 3 unassigned)
+  unassigned: ['9.920GHz(-78.1dB)', '10.710GHz(-78.0dB)', '11.420GHz(-69.1dB)']
+======================================================================
+REV 13 ACCEPTANCE (standing standard, evaluated on the S7+v2 baseline):
+Band edge (S21=-10dB crossing) <= 4.35GHz: PASS (found @ 3.880GHz)
+All 6 stubs matched within 3%: FAIL (unmatched: ['5.3GHz'])
+S21@4.5GHz <= -20dB: PASS (-33.56dB)
+Convergence history present, final delta-S <= 0.02: PASS (0.0037)
+Valleys: REPORT ONLY this pass (judged after zero placement)
+======================================================================
+REV 12 VERDICT (generic, kept for continuity):
+Every stub shows a matched notch: FAIL (no notch found for: ['5.3GHz'])
+Zeros within ~5% of target design frequency: FAIL (max |delta| among matched=9.15%)
+Every inter-zero valley (4.2-8.0GHz) <=-30dB pre-trim: FAIL (worst=-7.39dB)
+Passband 0.5-3.3GHz within ~2dB of flat: FAIL (spread=2.75dB)
+======================================================================

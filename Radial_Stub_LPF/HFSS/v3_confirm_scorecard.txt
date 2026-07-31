@@ -1,0 +1,42 @@
+==========================================================================
+Rev 17 B3 scorecard - v3 (S1=L-stub@4.5GHz, S7 deleted) vs v2+S7
+==========================================================================
+trace points: v3=1951 (0.500-13.000GHz)  v2+S7=1951 (0.500-13.000GHz)
+
+--- HEADLINE: S21 at the SNAIL criterion frequency ---
+  v3       S21@4.500GHz =   -33.56 dB
+  v2+S7    S21@4.500GHz =   -10.94 dB
+  improvement = 22.62 dB   (target <= -20dB: v3 PASS, v2+S7 FAIL)
+
+--- Label-independent null enumeration (local minima < -15dB, 3-9GHz) ---
+  v3     5 nulls: 4.270GHz(-49.6dB), 4.590GHz(-63.3dB), 5.870GHz(-62.6dB), 6.810GHz(-65.6dB), 8.170GHz(-49.4dB)
+  v2+S7  6 nulls: 4.760GHz(-29.2dB), 5.350GHz(-66.2dB), 5.820GHz(-107.6dB), 5.840GHz(-126.3dB), 6.900GHz(-64.9dB), 8.150GHz(-72.9dB)
+
+--- Stopband floor by sub-window (worst = shallowest S21) ---
+  window                       v3 worst            v2+S7 worst
+   4.2- 4.6GHz       -21.64dB @  4.200GHz      -9.02dB @  4.200GHz
+   4.6- 5.5GHz        -7.39dB @  4.910GHz      -5.29dB @  4.800GHz
+   5.5- 7.0GHz       -21.93dB @  5.500GHz     -20.42dB @  6.420GHz
+   7.0- 8.2GHz       -22.04dB @  7.810GHz     -21.86dB @  7.890GHz
+   4.2- 8.2GHz        -7.39dB @  4.910GHz      -5.29dB @  4.800GHz
+
+--- Passband (0.5-3.5GHz) ---
+  f(GHz)           v3      v2+S7    delta
+  0.5          -1.71dB     -1.80dB   +0.08dB
+  1.0          -3.10dB     -3.17dB   +0.07dB
+  2.0          -0.59dB     -0.16dB   -0.43dB
+  3.0          -2.55dB     -3.35dB   +0.81dB
+  3.3          -0.35dB     -1.74dB   +1.39dB
+  3.5          -0.96dB     -0.18dB   -0.77dB
+  spot-value peak-to-peak ripple: v3 2.75dB   v2+S7 3.19dB   (delta -0.44dB)
+  v3     full-trace 0.5-3.5GHz: best -0.01dB @ 3.380GHz, worst -3.11dB @ 1.050GHz, span 3.10dB
+  v2+S7  full-trace 0.5-3.5GHz: best -0.16dB @ 1.990GHz, worst -3.49dB @ 2.880GHz, span 3.33dB
+
+--- Band edge (-10dB crossing) - REPORTED, NOT SCORED (Rev 17 D4) ---
+  v3     first -10dB crossing: 3.880GHz
+  v2+S7  first -10dB crossing: 4.310GHz
+
+--- Out-of-band features 8-14GHz (S21 above -30dB = leakage) ---
+  v3     3 peaks >-30dB: 8.470GHz(-11.4dB), 10.300GHz(-17.8dB), 11.925GHz(-1.2dB)
+  v2+S7  5 peaks >-30dB: 8.430GHz(-15.5dB), 10.325GHz(-17.8dB), 11.065GHz(-24.8dB), 11.765GHz(-27.3dB), 12.780GHz(-6.7dB)
+==========================================================================
