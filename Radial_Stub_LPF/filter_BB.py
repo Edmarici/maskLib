@@ -249,17 +249,38 @@ STUBS = [
     # theory value - the residual's own cause (eps_eff for a stub vs. the
     # bare through-line it was extracted from, and/or tee loading) is a real
     # open question, logged rather than chased.
-    # fold_dir=+1 turns the axial run toward -y (down-chip). Tried +y first
-    # (toward the input) on the theory it would clear S3 - it does not work:
-    # the 4973um axial run then overshoots the port plane at y=35000, ending
-    # at y=35207.8 and contaminating port 1's own cross-section (the geometry
-    # check caught it as a 3270um-wide port cut instead of 1000um). Turning
-    # -y is safe despite S3 sharing this side, because the 2500um standoff
-    # puts S1's axial run at x~6185 while S3's serpentine only reaches
-    # x~5190 - they never overlap transversely. Verified by the per-stub
-    # nearest-neighbour clearance check, not by inspection.
-    dict(f=4.5, w=70.0, side=+1, n_par_runs=3, fan_term=0.0, dl_um=854.07,
-         geom='L', fold_dir=+1),
+    # ---------------- Rev 18: S1 is now a WIDE-GAP SINGLE FOLD ----------------
+    # Replaces Rev 17's L geometry. Motive: in v3 the L stub's open end (a
+    # voltage antinode) came to rest 783um from S3's fan (also an antinode) -
+    # the tightest pair in the whole design - and S3's own -66dB notch
+    # disappeared from the v3 sweep. Rev 16's Track A had already seen the
+    # coupling (perturbing S1 moved the 5.355GHz S3 notch harder than anything
+    # else). Folding S1 back on itself keeps the length while pulling its
+    # far end away from S3.
+    #
+    # Geometry: 2 runs at a 1000um gap (-> bend_radius (1000+70)/2 = 535um),
+    # the fold experiment's measured-best serpentine (k_eff 0.792). Landing on
+    # 4.5GHz therefore needs 6987.90/0.792254 = 8820.28um drawn, so
+    # dl_um = 8820.28 - 6987.90 = 1832.38. CAVEAT: k_eff 0.792 was measured on
+    # a 6987.90um piece and is being applied 26.2% beyond it (the L case
+    # extrapolated only 12%) - if the null lands well off 4.5GHz, suspect this
+    # extrapolation before suspecting the geometry.
+    #
+    # fold_dir=-1 folds NORTH, away from S3, which is the whole point. The
+    # handoff assumed a southward fold that turns back before reaching S3's
+    # latitude; that is geometrically impossible here - swept d_perp over
+    # 600..4200um for both fold handednesses and NO southward configuration
+    # satisfies the standoff, S1-S3 separation, transverse and bore
+    # constraints simultaneously (the U-turn apex cannot get far enough from
+    # S3 without pushing the return run through the 6950um bore wall).
+    # Folding north makes S1's southernmost metal its own exit segment at
+    # y=29965, i.e. 4915um clear of S3's top - nearly 2x the requirement -
+    # at zero cost. d_perp=1200um then keeps the return run 1665um off the
+    # main line and the outer run 660um inside the bore wall, with the fold
+    # apex at y~33085, 1915um short of the y=35000 port plane (the failure
+    # mode that killed a +y L stub in Rev 17 - checked explicitly here).
+    dict(f=4.5, w=70.0, side=+1, n_par_runs=2, fan_term=0.0,
+         dl_um=1832.3828665091825, run_gap=1000.0, d_perp=1200.0, fold_dir=-1),
     # Rev 16 Step 0: S2-S6 FROZEN at their exact pass-3 realized lengths -
     # each dl_um below is copied verbatim from that stub's own recorded
     # dl_um_seed in filter_BB_dims_pass3.json (S2's pass-3 delta was exactly
@@ -747,12 +768,21 @@ class FilterBBChip(m.Chip):
 
         for spec, section in zip(prepared_stubs, SERIES_SECTIONS):
             label = '%.1fGHz' % spec['f']
-            d_perp_clearance = D_PERP_UM - W_MAIN / 2 - spec['w'] / 2
+            # Rev 18: d_perp and run_gap are per-stub overridable (defaulting to
+            # the globals) so ONE stub can carry a different fold geometry
+            # without disturbing the others. S1 needs both: a 1000um run gap
+            # (the fold experiment's measured-best serpentine, k_eff 0.792 vs
+            # 0.659 for the stock 400um gap) and a longer standoff, because the
+            # wide 535um-radius U-turn pushes its return run 1070um further out
+            # than a stock fold's would.
+            d_perp_um = spec.get('d_perp') if spec.get('d_perp') is not None else D_PERP_UM
+            d_perp_clearance = d_perp_um - W_MAIN / 2 - spec['w'] / 2
             if d_perp_clearance < 500.0:
                 raise ValueError('%s: d_perp=%.1fum gives only %.1fum clearance to the main line '
-                                  '(need >=500um) - increase d_perp' % (label, D_PERP_UM, d_perp_clearance))
+                                  '(need >=500um) - increase d_perp' % (label, d_perp_um, d_perp_clearance))
 
-            run_gap = max(4 * spec['w'], _MIN_RUN_GAP_UM)
+            run_gap = (spec.get('run_gap') if spec.get('run_gap') is not None
+                       else max(4 * spec['w'], _MIN_RUN_GAP_UM))
             # spec['fold_dir'] (optional, default None) overrides the automatic
             # per-side-group alternation for ONE stub, when a same-side non-
             # adjacent-in-table pair needs a specific fold direction to clear
@@ -765,7 +795,7 @@ class FilterBBChip(m.Chip):
             auto_fold_dir = next_fold_dir[spec['side']]
             next_fold_dir[spec['side']] *= -1
             fold_dir = spec.get('fold_dir') if spec.get('fold_dir') is not None else auto_fold_dir
-            fold_params = dict(d_perp=D_PERP_UM, n_par_runs=spec['n_par_runs'],
+            fold_params = dict(d_perp=d_perp_um, n_par_runs=spec['n_par_runs'],
                                 run_gap=run_gap, fold_dir=fold_dir)
 
             tee_pos = s_main.start  # main line position where this stub branches off (before the call below)

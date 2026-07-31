@@ -236,7 +236,15 @@ def _build_pieces(fbb):
     for spec, section in zip(prepared_stubs, fbb.SERIES_SECTIONS):
         label = '%.1fGHz' % spec['f']
         w = spec['w']
-        run_gap = max(4 * w, fbb._MIN_RUN_GAP_UM)
+        # Rev 18: d_perp and run_gap are per-stub overridable in fbb's own build
+        # loop - mirror that here too. Missing these is not cosmetic: this file
+        # is what actually feeds HFSS, so a stale global silently solves a
+        # DIFFERENT stub than the one filter_BB.py drew (caught exactly that
+        # way - the dims JSON said run_length 2549.58um while this replay
+        # produced 3356.44um from the stock d_perp=1000/run_gap=400).
+        d_perp_um = spec.get('d_perp') if spec.get('d_perp') is not None else fbb.D_PERP_UM
+        run_gap = (spec.get('run_gap') if spec.get('run_gap') is not None
+                   else max(4 * w, fbb._MIN_RUN_GAP_UM))
         # Rev 13 clearance fix: spec['fold_dir'] optionally overrides the
         # automatic alternation for one stub - mirror fbb's own __init__
         # logic exactly (see that file's own comment at the matching site).
@@ -251,7 +259,7 @@ def _build_pieces(fbb):
         # NO exit turn (see module docstring) -> (n_bends + 0.5) turn-lengths'
         # worth of arc, not L60's (n_bends + 1).
         turn_arc_len = math.pi * bend_radius * (n_bends + 0.5)
-        run_length = (spec['target_length'] - fbb.D_PERP_UM - turn_arc_len) / n_par_runs
+        run_length = (spec['target_length'] - d_perp_um - turn_arc_len) / n_par_runs
 
         b_dir = direction + spec['side'] * 90
         b_pos = pos  # branch spawns from the main line's CURRENT point (zero-offset clone) - main pos untouched
@@ -294,7 +302,7 @@ def _build_pieces(fbb):
             yield 'Line_after_%s' % label, pts, None, None
             continue
 
-        pts, b_pos = _rect_poly(b_pos, b_dir, fbb.D_PERP_UM, w, w)
+        pts, b_pos = _rect_poly(b_pos, b_dir, d_perp_um, w, w)
         yield '%s_exit' % label, pts, None, None
 
         turn_CCW = CCW
