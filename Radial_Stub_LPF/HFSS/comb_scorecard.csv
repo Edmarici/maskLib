@@ -1,0 +1,10 @@
+index,mode,freq_ghz,tolerance_ghz,probe_s21_db,probe_verdict,probe_margin_db,probe_worst_at_ghz,v3_s21_db,v3_verdict,v3_margin_db,v3_worst_at_ghz
+1,buffer 1,4.500,0.15,-23.03,PASS,3.03,4.480,-29.28,PASS,9.28,4.380
+2,buffer 2,5.000,0.15,-22.23,PASS,2.23,4.960,-7.39,FLAG,-12.61,4.910
+3,storage 1,5.792,,-18.21,FLAG,-1.79,5.790,-30.45,PASS,10.45,5.790
+4,storage 2,6.160,,-22.47,PASS,2.47,6.160,-30.92,PASS,10.92,6.160
+5,storage 3,6.528,,-26.07,PASS,6.07,6.530,-32.85,PASS,12.85,6.530
+6,storage 4,6.897,,-55.47,PASS,35.47,6.895,-34.35,PASS,14.35,6.900
+7,storage 5,7.265,,-20.85,PASS,0.85,7.265,-22.61,PASS,2.61,7.260
+8,storage 6,7.633,,-20.08,PASS,0.08,7.635,-22.26,PASS,2.26,7.630
+9,storage 7,8.001,,-23.44,PASS,3.44,8.000,-23.17,PASS,3.17,8.000
