@@ -67,7 +67,13 @@ handoff docs this session (L60's own 5.5mm/4500um and 6985um figures).
   fold_dir alternates +1,-1,+1 so same-side stubs don't all curl the same
   way.
 
-## 4. Build session results
+## 4. Build session results (Rev 8 — FIRST BUILD, superseded)
+
+> **Historical.** The numbers in this section are the original Rev 8 layout at
+> `EPS_EFF=5.5` with a 4.2GHz S1 and no HFSS behind them. Every length here
+> has since changed. Kept because the *method* notes (exact-length-by-
+> construction, the fold_dir bug) still apply. For current numbers see sec 9
+> onward.
 
 `filter_BB.py` ran clean on the first real attempt (repo `.venv`) after one
 report-only bug fix (see sec 5). Runtime report highlights:
@@ -138,11 +144,15 @@ zigzag ending in a plain flat open edge, no artifacts.
 
 ## 6. Known open items (carried from the handoff)
 
-- **EPS_EFF=5.5 is a PLACEHOLDER** - the handoff's own "GATING ITEM": a
-  bare-70um-strip-in-bore HFSS extraction (Eddie-side) is needed before
-  any stub length here is trustworthy. Every length in this file is a pure
-  function of `EPS_EFF` (`stub_quarter_wave_length_um()`), so updating the
-  constant recomputes everything automatically.
+- ~~**EPS_EFF=5.5 is a PLACEHOLDER**~~ **RESOLVED.** `filter_BB.py` now
+  carries `EPS_EFF = 5.681` from a real extraction (see
+  [`extract_epseff.py`](../extract_epseff.py) and
+  [`epseff_extraction_status.md`](epseff_extraction_status.md)). Every
+  length is still a pure function of the constant, so this recomputed the
+  whole table. Caveat that matters downstream: it was extracted from a
+  bare through-line, and sec 8 below shows a *folded stub* does not behave
+  as if it has that eps_eff - the fold penalty is a separate, larger
+  effect that has to be corrected for on top.
 - **fan_term's 0.6*Rout length correction is the handoff's own stated
   first-order guess**, not independently verified - "HFSS trims" per the
   handoff, via the per-stub `dl_um` field already present (currently 0 for
@@ -160,3 +170,256 @@ zigzag ending in a plain flat open edge, no artifacts.
 - **O5 (new)**: whether >=40dB across 4.2-8.0GHz is the right target, or
   whether per-mode kappa_ext numbers should size the stub count instead -
   unresolved, Eddie's call.
+
+---
+
+# Part II — HFSS revisions (Rev 12–18)
+
+Everything above is the pre-HFSS layout record. Everything below is measured.
+
+## 7. Line impedance — all three conventions (Rev 15)
+
+Four design decisions rested on a characteristic impedance of which only
+`|Z_pi|` had ever been reported. Pulling the other two required deleting and
+recreating the ports and re-solving (this AEDT version bakes the impedance
+convention in at port-creation time — there is no post-hoc property to query,
+confirmed by inspecting the live boundary's property list).
+
+```
+Z_pi = 69.71 ohm      <- what the design and the 70-ohm ports use
+Z_pv =  0.41 ohm
+Z_vi =  5.37 ohm
+```
+
+`Z_vi = sqrt(Z_pi * Z_pv)` holds to 4 significant figures, so the three are
+self-consistent. The **spread is enormous**, which is the actual finding: on a
+chip with no on-chip ground plane the nearest reference conductor is ~3.5mm
+away, so any voltage line integral depends strongly on the integration path.
+Attributed to that, plausibly but **not proven** — the identity holding does
+not by itself validate the physical interpretation.
+
+Practical consequence: `Z_pi` is the only one of the three that means what a
+circuit model needs, and it is the one already in use. No design change.
+
+## 8. The fold penalty — measured, and it is large (Rev 17)
+
+**This is the most reusable result in the campaign.** Several stubs had
+"missing" notches across Rev 12–16. The cause was not that they failed to
+resonate; it was that folding shortens a stub's *effective electrical length*
+enough to push its resonance outside the search window that was looking for it.
+
+Measured directly ([`filter_BB_fold_experiment_HFSS.py`](../filter_BB_fold_experiment_HFSS.py)):
+one stub alone on a matched through-line, four geometries at an **identical**
+6987.90um drawn centerline length, in the **real** 7000um bore.
+
+| geometry | null | k_eff | comparable? |
+|---|---|---|---|
+| 3 parallel runs, 400um gap | 6.830 GHz | 0.659 | yes |
+| 2 parallel runs, 1000um gap | 5.680 GHz | 0.792 | yes |
+| **L (single 90deg bend)** | **5.050 GHz** | **0.891** | yes |
+| straight, no bend | 5.450 GHz | 0.826 | **NO** — see caveat |
+
+`k_eff` = (bare quarter-wave frequency) / (measured null frequency). 1.0 would
+mean the drawn length resonates where lambda/4 theory says. All four are bare
+4.500GHz by construction.
+
+**The rule:** in this groundless bore, adjacent antiparallel meander runs
+partially cancel. The resonance does **not** disappear at any fold depth
+tested — it *shifts up*, monotonically in both fold count and run gap. Fewer
+folds and wider gaps are always electrically better; the L geometry is the
+best that fits.
+
+Cross-check: applying the 3-run k_eff to S2 (the only other 3-run fold,
+9776.09um drawn) predicts 4.882GHz against a measured 4.760GHz — 2.5%.
+
+Three caveats, all load-bearing:
+
+- **V-straight is not comparable.** 6988um of perpendicular reach does not fit
+  a 3500um-radius bore at all; it needed a 16mm bore, which changes the
+  implied eps_eff to 3.87 vs 5.681. So the cleanest possible control does not
+  exist, and the rule rests on the monotonic trend across the three real-bore
+  variants instead.
+- **Even the L geometry lands 12.2% high.** Its own residual is applied as an
+  explicit empirical correction at the call site, not explained. Whether the
+  cause is stub-vs-through-line eps_eff, tee loading, or something else is a
+  real open question — logged, deliberately not chased.
+- **`HFSS/foldexp_results.csv` records V-fold-wide as `NO` notch.** That is the
+  windowed search (3.5–5.5GHz) reporting, not physics: the full coarse sweep
+  found it cleanly at 5.680GHz. The CSV row is a live example of exactly the
+  blind spot this section explains — read it with the log, not alone.
+
+## 9. v3 — the first passing configuration (Rev 17)
+
+Changes from the v2+S7 baseline: **S7 deleted outright** (it produced no notch
+while still costing ~2.5mm of line and adding passband shunt susceptance) and
+**S1 retargeted 4.2 -> 4.5GHz on the L geometry**, with the measured 1.1222
+residual from sec 8 applied as a length correction (7841.97um drawn). S2–S6
+frozen byte-identical.
+
+Tagged **`filter_BB_v3`**, solve outputs committed under `HFSS/v3_confirm_*`.
+
+```
+                              v3          v2+S7
+S21 @ 4.5GHz            -33.56 dB     -10.94 dB     <- headline, target <=-20dB
+worst S21 4.7-5.3GHz     -7.39 dB      -5.29 dB     <- "the hole"
+worst S21 5.5-7.0GHz    -21.93 dB     -20.42 dB
+passband ripple (spots)   2.75 dB       3.19 dB
+band edge (-10dB)        3.880 GHz     4.310 GHz    <- reported, NOT scored
+```
+
+**S21@4.5GHz improved 22.6dB and passes the SNAIL criterion for the first
+time.** That number is a direct trace readout at the criterion frequency — no
+labelling, no matcher, no search window — and it is the one result in this
+campaign that cannot be reinterpreted.
+
+Everything else is more equivocal and should be read that way:
+
+- The passband improvement is real but small (0.44dB on spot ripple). The
+  dominant ~-3.1dB dip near 1.05GHz is present in both and is **not**
+  stub-related.
+- The band edge moved *down* 430MHz. Deliberately not scored — the criterion
+  predates S1's retarget and no longer means what it did.
+- 8–14GHz has three features above -30dB, one at **11.925GHz at -1.2dB**, an
+  essentially wide-open transmission window. Only matters if pump harmonics up
+  there are a concern, but it is worse than v2+S7's equivalent.
+
+## 10. OPEN: the v3 null attribution is ambiguous
+
+Label-independent nulls, 3–9GHz:
+
+```
+v3     4.270(-49.6)  4.590(-63.3)  5.870(-62.6)  6.810(-65.6)  8.170(-49.4)   5 nulls
+v2+S7  4.760(-29.2)  5.350(-66.2)  5.820(-107.6) 5.840(-126.3) 6.900(-64.9)  8.150(-72.9)
+```
+
+S4/S5/S6 moved <=1.3% (expected — frozen geometry). But the low end rearranged
+completely, and **one stub's notch is gone**. Two readings fit every number:
+
+1. S1 landed at 4.590 (+2.0%, the L correction working), S2 dragged to 4.270,
+   S3 lost.
+2. 4.590 = S2 nudged -3.6%, 4.270 = **S3 pulled down 20%**, and S1 still has no
+   resonance of its own.
+
+These have opposite implications and **the data in hand cannot separate them.**
+The built-in escalation test can't either — it perturbed S3 and searched
+[4.505, 6.095]GHz, so it never looked at 4.270.
+
+Resolving it needs one perturbation solve on S1 (+2–3% length) over a window
+**wider** than the escalation used: if 4.590 tracks down ~1:1 S1 is real; if
+4.270 moves instead, S1 is dead and has taken S3 with it.
+
+This campaign has already had two measurement-attribution failures (a sweep
+mode-selection bug and the dashboard peak-finder). Do not close this one by
+picking the flattering reading.
+
+## 11. S1 <-> S3 coupling, and the Rev 18 refold
+
+v3's L-stub put S1's open end **783.0um** from S3's fan — the tightest pair in
+the design, and **both are voltage antinodes**, the most effective possible
+capacitive coupling geometry. Loading an open end pulls its resonance *down*,
+which is exactly reading 2 above.
+
+Two things support the coupling being real rather than coincidental:
+
+- Rev 16's Track A perturbation of the *old* S1 produced its largest response
+  (r = -0.322) at 5.355GHz — **S3's own notch**. That looked anomalous at the
+  time. It wasn't.
+- The proximity is a **tip-to-fan** approach with only 258um of y-overlap, not
+  a long broadside-coupled run. (Checked explicitly — the broadside guess was
+  wrong.)
+
+**Rev 18 response:** S1 refolded as a 2-run / 1000um-gap serpentine (the
+measured-best real-bore fold from sec 8, k_eff 0.792, drawn 8820.28um),
+`d_perp` 1200um, folded **north — away from S3**.
+
+The handoff specified a *southward* fold turning back before S3's latitude.
+**That is geometrically impossible here**: sweeping `d_perp` 600–4200um across
+both fold handednesses, no southward configuration satisfies the standoff,
+separation, transverse and bore constraints simultaneously — the U-turn apex
+cannot clear S3 without pushing the return run through the 6950um bore wall.
+Folding north satisfies the same intent far more cheaply, because S1's
+southernmost metal becomes its own exit segment at the tee.
+
+| constraint | required | achieved |
+|---|---|---|
+| southernmost metal | >= 26500 | **29965** |
+| S1<->S3 separation | >= 2500 | **4915.1** (v3: 783.0 — 6.3x) |
+| transverse total | <= 6000 | **5227.1** |
+| runs off main line | >= 1500 | **1665.0** |
+| all-pairs clearance | >= 800 | **1165.0** |
+
+Bore clearance 660um; fold apex 1345.6um clear of the y=35000 port plane
+(checked explicitly — a +y run is what broke port 1 in Rev 17).
+
+**Cost of folding north:** S1's `run1`/`bend1` now pass **1248um from the
+pin-pad launch**, a proximity that did not previously exist. Above the 800um
+floor and C4 is satisfied against the main line proper, but it is inside the
+range where sec 8 measured real coupling. Better trade than 783um
+antinode-to-antinode (a driven port structure is not a resonator, and S1's own
+antinode is now >2700um clear of everything) — but it is a new thing to watch,
+not free.
+
+### 11.1 Rev 18 probe result — CASE 1, the fold works
+
+[`filter_BB_singlefold_probe_HFSS.py`](../filter_BB_singlefold_probe_HFSS.py),
+variant `v3f_singlefold`. **Directional only** — single-point adaptive at
+4.7GHz, 4 passes, final delta-S 0.0102, one interpolating sweep 3.5–9.0GHz, no
+discrete window. v3's mesh was *tighter* (delta-S 0.0037) and adapted at
+3.5GHz. These are not scorecard numbers.
+
+```
+                              probe        v3        change
+S21 @ 4.5GHz              -23.08 dB   -33.56 dB    +10.49 dB  (worse, still passes)
+worst S21 4.7-5.3GHz      -22.23 dB    -7.39 dB    -14.85 dB  (BETTER - hole filled)
+worst S21 4.2-4.6GHz      -11.98 dB   -21.64 dB     +9.66 dB  (worse)
+worst S21 5.5-7.0GHz      -17.87 dB   -21.93 dB     +4.06 dB  (worse)
+worst S21 4.2-8.2GHz      -11.98 dB    -7.39 dB     -4.59 dB  (BETTER)
+fraction of 4.2-8.2 <-20dB    91.8%      86.3%
+```
+
+**Decision case 1** per the handoff's own rule: the hole improved by >=10dB
+*and* S21@4.5GHz still passes at -23.08dB. A proper discrete confirmation run
+is the indicated next step.
+
+But read the rest before treating this as a win:
+
+- **The hole moved, it did not simply vanish.** The 4.7–5.3GHz hole filled by
+  14.85dB while the 4.2–4.6GHz region got 9.66dB *worse*. The global worst
+  across 4.2–8.2GHz improved only 4.59dB, from -7.39 to -11.98dB.
+- **Still 5 nulls for 6 stubs.** Every v3 null maps onto a probe null:
+  `4.270->4.325, 4.590->4.855, 5.870->5.480, 6.810->6.890, 8.170->8.135`.
+  Nothing new appeared and nothing was lost — they **moved**, on frozen S2–S6
+  geometry, which is itself more evidence for cascade coupling.
+- **A null did appear in 5.2–5.5GHz, but it is NOT evidence of S3
+  recovering.** The probe script's own auto-check says "YES — S3 recovering";
+  that reading does not survive the mapping above, which makes 5.480 far more
+  likely to be v3's 5.870 null moved *down* 6.6%. There is now no null
+  anywhere in 5.5–6.5GHz, which is exactly what that mapping predicts.
+  **Sec 10's ambiguity is NOT resolved by this run.**
+- Two bugs in the probe script's own verdict logic, both mine, both fixed:
+  the decision rule had the dB sign backwards (it printed "CASE 4 — worse
+  across the board" for what is actually case 1), and check 4's wording
+  asserts an attribution the data does not support.
+
+## 12. Process lessons (each cost real time)
+
+- **A windowed notch search reports "no notch" for a notch that exists.** Every
+  "missing" stub in Rev 12–16 was this. Always enumerate nulls
+  label-independently over the full sweep before concluding anything is absent.
+- **The HFSS export replay drifts from the layout script silently.**
+  [`verify_filter_BB_hfss_export.py`](../verify_filter_BB_hfss_export.py) is
+  the *actual* geometry source for HFSS, and it re-implements
+  `filter_BB.py`'s build loop. It has now had to be patched twice for this
+  (the Rev 17 L-stub dispatch, and Rev 18's per-stub `d_perp`/`run_gap`, where
+  it silently used stale globals — `run_length` 3356.44um replayed against
+  2549.58um drawn). **Any change to the build loop needs a matching change
+  here**, and the cheap detector is comparing the dims JSON against the
+  regenerated pieces. A miss here looks like a physics result, not a bug.
+- **Check clearances all-pairs, never table-adjacent-only.** A real 75um
+  collision hid in a non-adjacent same-side pair in Rev 13; the S1<->S3
+  proximity in sec 11 is another non-adjacent pair.
+- **Duplicate same-named AEDT projects can eat a real solve's results.** See
+  CLAUDE.md's own extended note — the probe script prints the count of
+  same-named open handles for exactly this reason.
+- **`Analyze()` returns `None` on success** in this COM binding. Do not read
+  the return value as a failure signal; pull the data instead.
