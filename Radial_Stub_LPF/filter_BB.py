@@ -356,7 +356,42 @@ STUBS = [
     # act as two independent stubs. -1 turns S6 south into the empty run above
     # the output taper instead. Same override, same reason, as S3's own
     # Rev 13 fix. Caught by the all-pairs clearance check, not by inspection.
-    dict(f=5.98, w=70.0, side=-1, n_par_runs=2, fan_term=0.0, dl_um=1178.4494,
+    # ---- Rev 20 B3: S6 LENGTHENED 6436.90 -> 7379.32um to land storage 1 ----
+    # Rev 19 B4 established by DELETION that S6 owns TWO nulls, 6.640 and
+    # 7.580GHz - not the one null every earlier inference assumed. This move
+    # puts the LOWER of them on storage 1 (5.792GHz), the design's only flag:
+    #
+    #   L = 6436.9032 * 6.640/5.792 = 7379.3227um   (+942.42, +14.64%)
+    #
+    # No k_eff appears in that arithmetic on purpose. Rev 20 B1 confirmed pure
+    # 1/length scaling on a real solve - S1's null moved +30MHz against +35MHz
+    # predicted, agreement one sweep grid point - so a length edit needs only
+    # the measured null and the ratio of frequencies. Every k_eff round trip
+    # this campaign attempted (Rev 18's S1, Rev 19 B2's S6) landed several
+    # percent off.
+    #
+    # f=5.98 is left alone deliberately: it is now only a LABEL (the piece
+    # prefix '6.0GHz' that the deletion tests filter on). This stub has not
+    # resonated at its nominal target since Rev 19 B2, and renaming it would
+    # break the attribution machinery for no gain. The number that means
+    # anything is realized_length_um.
+    #
+    # WHAT B2 REMOVED FROM THE MENU: the handoff's candidate (b) was this same
+    # move with the run gap widened to retune the pair's span. Rev 20 B2 ran
+    # S6's exact topology (2 runs, 400um gap, this length) alone in the real
+    # bore and got ONE null at 6.780GHz, not a pair - so there is no measured
+    # gap-to-span law to apply, and (b) cannot be specified. Note 6.780 sits
+    # only 2.06% from the cascade's LOWER null but 4.64% from the pair centre:
+    # the lower null is S6's own resonance lightly pulled by neighbour loading,
+    # and the upper null exists only in the cascade. Mechanism still unknown -
+    # see DESIGN_NOTES sec 15.
+    #
+    # RISK, stated before the solve (HFSS/v6_prediction_locked.md): S6's
+    # 7.580GHz null is currently worth +3.7dB to storage 6 and +4.1dB to
+    # storage 7. Moving it to 6.612 should push both toward their measured
+    # S6-ABSENT values (-20.09 and -19.76), so this may trade storage 1's
+    # -4.2dB flag for a ~-0.2dB one at storage 7.
+    dict(f=5.98, w=70.0, side=-1, n_par_runs=2, fan_term=0.0, dl_um=2120.8689,
          fold_dir=-1),
     # Rev 17 D1: S7 (4.4GHz) DELETED outright. Rev 16's real solve found it
     # produced NO notch at all, while still costing ~2.5mm of line length and

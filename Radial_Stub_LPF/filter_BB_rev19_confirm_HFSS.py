@@ -73,7 +73,7 @@ DISCRETE_COUNT = int(round((DISCRETE_STOP_GHZ - DISCRETE_START_GHZ) / DISCRETE_S
 CONFIRM_MAX_DELTA_S = 0.005  # v3 reached 0.0037; this is the matched setting
 
 PASSBAND_SPOTS = [0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.3, 3.5]
-EXPECT_S6_LEN_UM = 6436.9032
+EXPECT_S6_LEN_UM = 7379.3227  # Rev 20 B3: was 6436.9032 (Rev 19 B2's length)
 
 
 def nulls(f, s, lo, hi, depth=-15.0):
