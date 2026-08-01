@@ -169,12 +169,20 @@ def variant_spec(name):
     else:
         raise ValueError('unknown variant %r' % name)
 
+    return fold_spec(name, L, d_perp, n_par_runs, run_gap)
+
+
+def fold_spec(name, total_len_um, d_perp, n_par_runs, run_gap):
+    """The fold arithmetic, factored out so other experiments can reuse it
+    rather than re-deriving it. Rev 20 B2 (the split-pair gap sweep) calls
+    this directly - DESIGN_NOTES sec 12's standing lesson is that a
+    re-implemented build loop drifts silently, so there is one copy."""
     bend_radius = (run_gap + W_STUB) / 2.0
     n_bends = n_par_runs - 1
     # entrance 90deg turn + n_bends internal 180deg turns, no exit turn -
     # identical formula to filter_BB.py's own folded_stub()
     turn_arc_len = math.pi * bend_radius * (n_bends + 0.5)
-    run_length = (L - d_perp - turn_arc_len) / n_par_runs
+    run_length = (total_len_um - d_perp - turn_arc_len) / n_par_runs
     assert run_length > 0, '%s: run_length came out negative' % name
     return dict(name=name, kind='fold', d_perp=d_perp, n_par_runs=n_par_runs,
                  run_gap=run_gap, bend_radius=bend_radius, run_length=run_length,

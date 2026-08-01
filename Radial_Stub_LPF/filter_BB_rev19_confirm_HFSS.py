@@ -46,6 +46,22 @@ OUT_PREFIX = 'v4_comb'
 # fix is one code path, not two carefully-synchronised ones.
 DELETE_LABEL_PREFIX = None
 
+# Rev 20 B1: --mesh probe runs the SAME reporting code at the cheap probe
+# settings (3.5-9.0GHz interpolating @5MHz, single adaptive point, delta_S
+# 0.02). A confirm-mesh solve costs ~7h here; a probe-mesh one ~1h. The Rev 20
+# handoff asks for probe settings on B1, but a probe-mesh scorecard cannot be
+# compared on absolute dB against B3/B4's confirm-mesh numbers - that is the
+# exact confound that wrecked B3. So B1 is run as a PAIR at probe mesh
+# (untrimmed baseline, then trimmed), and the trim is judged on the
+# mesh-matched delta. The baseline half doubles as the first direct
+# measurement of probe-vs-confirm mesh error this project has ever had.
+MESH = 'confirm'
+PROBE_START_GHZ = 3.5
+PROBE_STOP_GHZ = 9.0
+PROBE_COUNT = 1101           # 5MHz, matching filter_BB_singlefold_probe_HFSS
+PROBE_ADAPTIVE_GHZ = 6.0     # Rev 20 handoff
+PROBE_MAX_DELTA_S = 0.02
+
 COARSE_START_GHZ = 0.5
 COARSE_STOP_GHZ = 14.0
 COARSE_COUNT = 2701          # 5MHz
@@ -69,7 +85,7 @@ def _parse_args(argv):
     """Tiny hand-rolled parser - argparse would pull in help/usage text that
     obscures this file's real entry point, which is the no-argument
     confirmation run."""
-    global DESIGN_NAME, OUT_PREFIX, DELETE_LABEL_PREFIX
+    global DESIGN_NAME, OUT_PREFIX, DELETE_LABEL_PREFIX, MESH
     i = 0
     while i < len(argv):
         if argv[i] == '--delete':
@@ -78,6 +94,10 @@ def _parse_args(argv):
             DESIGN_NAME = argv[i + 1]; i += 2
         elif argv[i] == '--prefix':
             OUT_PREFIX = argv[i + 1]; i += 2
+        elif argv[i] == '--mesh':
+            MESH = argv[i + 1]; i += 2
+            if MESH not in ('probe', 'confirm'):
+                raise SystemExit('--mesh must be probe or confirm')
         else:
             raise SystemExit('unknown argument %r' % argv[i])
 
@@ -107,16 +127,29 @@ def main():
         % (s6['realized_length_um'], EXPECT_S6_LEN_UM))
 
     out_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'HFSS')
-    FL.MAX_DELTA_S = CONFIRM_MAX_DELTA_S
-    specs = [
-        dict(name='Coarse_Sweep', type='Interpolating',
-             start=COARSE_START_GHZ, stop=COARSE_STOP_GHZ, count=COARSE_COUNT),
-        dict(name='Discrete_Window', type='Discrete',
-             start=DISCRETE_START_GHZ, stop=DISCRETE_STOP_GHZ, count=DISCRETE_COUNT),
-    ]
-    design, setup, sweeps = FL.build_design(project, DESIGN_NAME, geom, specs, adaptive='multi')
-    print('solving %s (delta_S %.4f, multi-freq %s attempted)...'
-          % (DESIGN_NAME, CONFIRM_MAX_DELTA_S, FL.MULTI_FREQ_ADAPTIVE_GHZ))
+    if MESH == 'probe':
+        FL.MAX_DELTA_S = PROBE_MAX_DELTA_S
+        FL.ADAPTIVE_FREQ_GHZ = PROBE_ADAPTIVE_GHZ
+        specs = [dict(name='Probe_Sweep', type='Interpolating',
+                      start=PROBE_START_GHZ, stop=PROBE_STOP_GHZ, count=PROBE_COUNT)]
+        adaptive = 'single'
+    else:
+        FL.MAX_DELTA_S = CONFIRM_MAX_DELTA_S
+        specs = [
+            dict(name='Coarse_Sweep', type='Interpolating',
+                 start=COARSE_START_GHZ, stop=COARSE_STOP_GHZ, count=COARSE_COUNT),
+            dict(name='Discrete_Window', type='Discrete',
+                 start=DISCRETE_START_GHZ, stop=DISCRETE_STOP_GHZ, count=DISCRETE_COUNT),
+        ]
+        adaptive = 'multi'
+    design, setup, sweeps = FL.build_design(project, DESIGN_NAME, geom, specs, adaptive=adaptive)
+    if MESH == 'probe':
+        print('solving %s (PROBE mesh: delta_S %.3f, single adaptive @%.2fGHz, %.1f-%.1fGHz)...'
+              % (DESIGN_NAME, PROBE_MAX_DELTA_S, PROBE_ADAPTIVE_GHZ,
+                 PROBE_START_GHZ, PROBE_STOP_GHZ))
+    else:
+        print('solving %s (delta_S %.4f, multi-freq %s attempted)...'
+              % (DESIGN_NAME, CONFIRM_MAX_DELTA_S, FL.MULTI_FREQ_ADAPTIVE_GHZ))
     setup.analyze()
 
     rows = FL.export_convergence(design, setup.name, out_dir)
@@ -125,11 +158,14 @@ def main():
         conv = '%d passes, final delta-S %s' % (len(rows), list(rows[-1].values())[-1])
     print('convergence: %s' % conv)
 
-    fc, s21c, s11c = FL.pull_sweep(sweeps['Coarse_Sweep'], out_dir, '_coarse19')
-    fd, s21d, s11d = FL.pull_sweep(sweeps['Discrete_Window'], out_dir, '_disc19')
-    window = (DISCRETE_START_GHZ, DISCRETE_STOP_GHZ)
-    f, s21 = FL.merge_sweep_data(fc, s21c, fd, s21d, window)
-    _, s11 = FL.merge_sweep_data(fc, s11c, fd, s11d, window)
+    if MESH == 'probe':
+        f, s21, s11 = FL.pull_sweep(sweeps['Probe_Sweep'], out_dir, '_probe20')
+    else:
+        fc, s21c, s11c = FL.pull_sweep(sweeps['Coarse_Sweep'], out_dir, '_coarse19')
+        fd, s21d, s11d = FL.pull_sweep(sweeps['Discrete_Window'], out_dir, '_disc19')
+        window = (DISCRETE_START_GHZ, DISCRETE_STOP_GHZ)
+        f, s21 = FL.merge_sweep_data(fc, s21c, fd, s21d, window)
+        _, s11 = FL.merge_sweep_data(fc, s11c, fd, s11d, window)
     order = np.argsort(f)
     f, s21, s11 = f[order], s21[order], s11[order]
 
@@ -148,9 +184,14 @@ def main():
     if DELETE_LABEL_PREFIX:
         print('Rev 19 - DELETION RUN, %s removed (attribution, not a design candidate)'
               % DELETE_LABEL_PREFIX)
+    elif MESH == 'probe':
+        print('PROBE-MESH RUN - %s' % DESIGN_NAME)
+        print('  NOT comparable on absolute dB against B3/B4 (delta_S 0.005). Read it')
+        print('  only against the other probe-mesh run of this pair.')
     else:
         print('Rev 19 B3 - confirmation, S6 retargeted 8.0 -> 5.98GHz')
-    print('  mesh: delta_S %.4f (v3: 0.0037).  convergence: %s' % (CONFIRM_MAX_DELTA_S, conv))
+    print('  mesh: delta_S %.4f (v3: 0.0037).  convergence: %s'
+          % (PROBE_MAX_DELTA_S if MESH == 'probe' else CONFIRM_MAX_DELTA_S, conv))
     print('=' * 78)
     print('MODE-COMB SCORECARD  (PASS = S21 <= %.0fdB; buffer rows = worst across +/-0.15GHz)' % PASS_DB)
     npass = 0
@@ -181,11 +222,17 @@ def main():
     print('  scorecard -> %s' % sc_path)
 
     print('-' * 78)
-    alln = nulls(f, s21, 0.5, 14.0)
-    print('NULLS (label-independent, <-15dB, 0.5-14GHz): %d' % len(alln))
+    lo_f, hi_f = float(f.min()), float(f.max())
+    alln = nulls(f, s21, lo_f, hi_f)
+    print('NULLS (label-independent, <-15dB, %.1f-%.1fGHz): %d' % (lo_f, hi_f, len(alln)))
     print('  %s' % ', '.join('%.3f(%.0fdB)' % p for p in alln))
     print('  in the comb range 4.2-8.2GHz: %s'
           % ', '.join('%.3f' % p[0] for p in alln if 4.2 <= p[0] <= 8.2))
+    if MESH == 'probe':
+        print('  (the Rev 19 S6-moved check is not run at probe mesh - skipped)')
+        print('-' * 78)
+        _report_tail(f, s21, at)
+        return 0
     if DELETE_LABEL_PREFIX:
         print('  (the S6-moved check below is meaningless in a deletion run - skipped)')
         print('-' * 78)
@@ -209,6 +256,11 @@ def main():
 
 
 def _report_tail(f, s21, at):
+    if float(f.min()) > 0.5:
+        print('DRIVE BAND / 8-14GHz: not covered by this sweep (%.1f-%.1fGHz) - skipped.'
+              % (float(f.min()), float(f.max())))
+        print('=' * 78)
+        return
     print('DRIVE BAND (0.5-3.5GHz confirmed still the passband this revision):')
     for x in PASSBAND_SPOTS:
         print('  %.1f GHz : %+7.2f dB' % (x, at(x)))
