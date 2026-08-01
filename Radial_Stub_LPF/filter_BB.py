@@ -279,8 +279,32 @@ STUBS = [
     # main line and the outer run 660um inside the bore wall, with the fold
     # apex at y~33085, 1915um short of the y=35000 port plane (the failure
     # mode that killed a +y L stub in Rev 17 - checked explicitly here).
+    # ---------------- Rev 20 B1: S1 TRIMMED 70.56um (8820.28 -> 8749.72) ----------------
+    # Moves S1's null 4.340 -> 4.375GHz, i.e. from 10MHz BELOW buffer 1's
+    # scored window ([4.350, 4.650]) to 25MHz inside it. S1 is buffer 1's
+    # primary protection - deleting it cost 13.6dB there - and the window's low
+    # edge falls off sharply, so the target is 4.375 and deliberately not
+    # higher.
+    #
+    # WHICH MEASUREMENT THE TRIM IS BUILT ON, because they disagree: S1's null
+    # has read 4.310 (census), 4.325 (Rev 18 probe) and 4.340 (Rev 19 B3/B4).
+    # The Rev 20 handoff's 100.8um comes from 4.325 (k_eff 0.8243). 4.340 is
+    # used here instead because B3/B4 read it off REAL DISCRETE SOLVED POINTS
+    # (the 10MHz Discrete_Window), while every other value comes from an
+    # Interpolating sweep's rational reconstruction, which misplaces sharp
+    # minima. Rev 20's own probe baseline measured that bias directly: its
+    # interpolated nulls sit a mean 14MHz (worst 35MHz) below the discrete
+    # ones, in the same direction, at every one of seven nulls. So the spread
+    # is a sweep-type artifact, not mesh noise, and the discrete number is the
+    # one to trim against.
+    #
+    # Scaling is exact and needs no k_eff: null frequency goes as 1/length at
+    # fixed geometry, so L_new = 8820.2836 * 4.340/4.375 = 8749.7214um and
+    # dl_um drops by 70.5623. Each of the two parallel runs shortens 35.28um;
+    # the fold apex moves 35um FURTHER from the y=35000 port plane, so every
+    # Rev 18 clearance gets marginally better, none worse.
     dict(f=4.5, w=70.0, side=+1, n_par_runs=2, fan_term=0.0,
-         dl_um=1832.3828665091825, run_gap=1000.0, d_perp=1200.0, fold_dir=-1),
+         dl_um=1761.8205974802, run_gap=1000.0, d_perp=1200.0, fold_dir=-1),
     # Rev 16 Step 0: S2-S6 FROZEN at their exact pass-3 realized lengths -
     # each dl_um below is copied verbatim from that stub's own recorded
     # dl_um_seed in filter_BB_dims_pass3.json (S2's pass-3 delta was exactly
