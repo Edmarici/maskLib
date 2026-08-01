@@ -19,6 +19,64 @@ can bridge a coverage gap that no single-null stub can. The two remaining
 gaps in the mode comb are 1.5 and 1.8GHz wide and the current pair spans
 0.94GHz, so this is the number the seventh-stub decision turns on.
 
+TWO PIECES OF EVIDENCE ALREADY ON DISK - READ BOTH BEFORE READING ANY RESULT
+-----------------------------------------------------------------------------
+(1) NO isolated fold variant in the Rev 17 experiment produced a pair.
+Re-reading its saved 0.5-14GHz coarse sweeps (HFSS/foldexp_*_S21.csv, no new
+solve): each has exactly ONE resonance across the full band -
+
+  V-fold-current (3 runs, 400um gap) : 6.830GHz (-61.7dB)
+  V-fold-wide    (2 runs, 1000um gap): 5.680GHz (-66.2dB)
+  V-L            (1 bend)            : 5.045GHz (-69.1dB)
+
+With the depth threshold removed entirely each trace has four local minima:
+the real null plus three shallow features near 1.9, 8.1 and 11.6GHz that sit
+within a few hundred MHz of each other across all three variants and are
+therefore harness artifacts. Where a 1.1416-ratio partner would sit there is
+no local minimum at all, only the skirt of the real null.
+
+(2) But S6's pair SCALES WITH S6'S LENGTH, which argues it is intrinsic.
+Predicting S6's pair at its OLD 3860.9um length from its NEW measured k_eff
+and ratio alone, by pure length scaling:
+
+  predicted 11.070 / 12.637 GHz (centre 11.8279)
+  observed  11.110 / 12.535 GHz (centre 11.8010)   <- the v3 census's own
+                                                      two unexplained nulls
+  centre agrees to 0.23%, ratio to 1.17%, k_eff 0.6902 vs 0.6886
+
+That is the best agreement anything in this campaign has produced. A
+hybridization with a fixed-frequency neighbour would show a detuning-dependent
+splitting, NOT a ratio preserved to ~1% across a 1.67x frequency move. It also
+retroactively explains two more census nulls that had no owner.
+
+THESE ARE NOT ACTUALLY IN CONFLICT, and an earlier draft of this file wrongly
+claimed (1) refuted the premise. The handoff's own prediction is that a WIDER
+gap converges the pair toward a single null. V-fold-wide is the wide-gap case
+(1000um) and shows one null - that CONFIRMS the trend rather than refuting it.
+V-fold-current is 3 runs, i.e. a three-line coupled system with three
+eigenmodes whose individual coupling to the through-line differs; its single
+visible null is not the same measurement as a two-line split and should not be
+read as one.
+
+The real gap in the evidence is that S6's exact topology - TWO runs at a 400um
+gap - was never run in isolation. V-fold-current is 3 runs at 400um; V-fold-
+wide is 2 runs at 1000um. Neither is it.
+
+WHAT THIS SCRIPT THEREFORE DOES
+-------------------------------
+G-400 runs first and gates the rest, because it is both the missing geometry
+and the only point checkable against an independent measurement:
+
+  pair, matching B4 -> the split is intrinsic and the harness reproduces the
+                       cascade. The G-1000/G-1500 trend is real and worth
+                       measuring. Continue.
+  one null          -> S6's pair needs the cascade to exist, so it cannot be
+                       designed by choosing a gap in isolation. Stop rather
+                       than map a trend the harness cannot see, and treat the
+                       seventh-stub-as-a-pair plan as unsupported.
+
+Pass --all to force all three gaps regardless.
+
 METHOD
 ------
 One stub alone on a matched through-line in the REAL 7000um bore - the same
@@ -72,6 +130,9 @@ B4_LOWER_GHZ = 6.640
 B4_UPPER_GHZ = 7.580
 
 GAPS_UM = [400.0, 1000.0, 1500.0]
+# G-400 gates the rest: if S6's own topology shows one null in isolation, the
+# split is a cascade effect and there is no gap trend to map. --all overrides.
+GATE_ON_FIRST = True
 
 COARSE_START_GHZ = 0.5
 COARSE_STOP_GHZ = 14.0
@@ -219,6 +280,27 @@ def main():
                                  'below carry cascade loading as an unmodelled error'))
         rows.append(row)
 
+        if GATE_ON_FIRST and gap == GAPS_UM[0]:
+            if len(in_win) < 2:
+                print()
+                print('*' * 78)
+                print('GATE: S6\'s own topology shows %d null in isolation, not the pair'
+                      % len(in_win))
+                print('it shows in the cascade. So the pair needs the cascade to exist and')
+                print('cannot be designed by choosing a gap in isolation - this harness')
+                print('cannot see the quantity B2 set out to measure. G-1000 and G-1500 are')
+                print('NOT run; re-run with --all to force them anyway.')
+                print()
+                print('NOTE this does NOT explain away the length-scaling evidence (S6\'s')
+                print('pair tracked its own length to 0.23% in centre and 1.17% in ratio')
+                print('across a 1.67x move). Both facts stand; the mechanism is unresolved,')
+                print('and the seventh-stub-as-a-designed-pair plan is unsupported until it')
+                print('is. Do not close this by picking the convenient reading.')
+                print('*' * 78)
+                break
+            print('  GATE PASSED: a real pair exists in isolation - the gap trend is worth')
+            print('  measuring. Continuing to the remaining gaps.')
+
     out = os.path.join(FE.OUT_DIR, 'splitpair_gap_sweep.csv')
     with open(out, 'w', newline='') as fh:
         w = csv.DictWriter(fh, fieldnames=list(rows[0].keys()))
@@ -242,4 +324,6 @@ def main():
 
 
 if __name__ == '__main__':
+    if '--all' in sys.argv[1:]:
+        GATE_ON_FIRST = False
     sys.exit(main())
