@@ -203,6 +203,13 @@ circuit model needs, and it is the one already in use. No design change.
 
 ## 8. The fold penalty — measured, and it is large (Rev 17)
 
+> **Read sec 15.2 with this section.** Every `k_eff` below is the *one* null
+> each variant shows over the full 0.5–14GHz band — that much is verified, not
+> windowed. But Rev 19 found a folded stub can own a null *pair*, which makes
+> "the" `k_eff` of a fold ambiguous unless you say whether it means the null
+> you can see or the centre of a pair. Do not mix these numbers with sec 15's
+> without reading 15.2 first.
+
 **This is the most reusable result in the campaign.** Several stubs had
 "missing" notches across Rev 12–16. The cause was not that they failed to
 resonate; it was that folding shortens a stub's *effective electrical length*
@@ -283,7 +290,15 @@ Everything else is more equivocal and should be read that way:
   essentially wide-open transmission window. Only matters if pump harmonics up
   there are a concern, but it is worse than v2+S7's equivalent.
 
-## 10. OPEN: the v3 null attribution is ambiguous
+## 10. ~~OPEN~~ RESOLVED: the v3 null attribution (see sec 14)
+
+> **Closed by deletion, not by argument.** Both readings below were wrong in
+> the same way: each assumed one null per stub. S1 owns 4.325/4.340GHz,
+> confirmed by removing it. The full census found 12 nulls for 6 stubs, so the
+> "one stub's notch is gone" premise that framed this whole section was itself
+> a search-window artifact. Kept for the record — the reasoning is a good
+> example of how far a plausible attribution argument can run without being
+> true.
 
 Label-independent nulls, 3–9GHz:
 
@@ -423,3 +438,196 @@ But read the rest before treating this as a win:
   same-named open handles for exactly this reason.
 - **`Analyze()` returns `None` on success** in this COM binding. Do not read
   the return value as a failure signal; pull the data instead.
+
+# Part III — the mode-comb spec, and attribution by deletion (Rev 19–20)
+
+## 13. The acceptance criterion changed, and the old one is retired
+
+Rev 19 replaced continuous band coverage with a **discrete 9-mode comb**.
+Scoring is now a table lookup, not a search:
+
+| # | mode | GHz | tolerance |
+|---|---|---|---|
+| 1 | buffer 1 | 4.500 | worst across ±0.15 |
+| 2 | buffer 2 | 5.000 | worst across ±0.15 |
+| 3 | storage 1 | 5.792 | at the mode |
+| 4 | storage 2 | 6.160 | at the mode |
+| 5 | storage 3 | 6.528 | at the mode |
+| 6 | storage 4 | 6.897 | at the mode |
+| 7 | storage 5 | 7.265 | at the mode |
+| 8 | storage 6 | 7.633 | at the mode |
+| 9 | storage 7 | 8.001 | at the mode |
+
+PASS = S21 ≤ −20dB. Above that earns no extra credit and must not be
+optimized for. Below it FLAGs with the actual value — a flag is pending the
+kappa budget, not a failure. Drive band confirmed still 0.5–3.5GHz.
+
+**"Worst S21 in 4.2–8.0GHz" is retired.** Peaks *between* modes now cost
+nothing, so that number does not merely add noise, it actively misleads: v3's
+4.910GHz hole reads as a failure under the old criterion and is irrelevant
+under the new one. `filter_BB_rev19_confirm_HFSS.py` exists as a separate
+driver from `filter_BB_firstlight_HFSS.main()` for exactly this reason.
+
+## 14. Attribution by deletion works. Attribution by inference does not.
+
+**Every k_eff-consistency inference this campaign made was wrong. Every
+deletion test was right.** That is not a close call, and it is the single most
+useful methodological result here.
+
+The method: rebuild the geometry with one stub's pieces filtered out of
+`geom['pieces']` by label prefix, at the **same mesh** as the reference run,
+and diff the null lists. Deleting by piece-filter rather than by editing the
+`STUBS` table means nothing downstream shifts — series sections, tee
+positions and every other stub stay byte-identical.
+
+Confirmed by deletion:
+
+| stub | owns | how it was found |
+|---|---|---|
+| S1 | 4.325 / 4.340 GHz | deletion |
+| S4 | 6.890 GHz | deletion |
+| S6 | **6.640 AND 7.580 GHz** | deletion |
+
+Refuted by deletion, having been inferred from k_eff consistency:
+
+- S1 owns 4.855 — no, it owns 4.325.
+- S5 owns 6.890 — no, S4 does.
+- S6 owns 9.970 — no. 9.970 survived both S6's lengthening *and* S6's
+  deletion. This one was doubly wrong and cost two solves: Rev 19 B2 moved S6
+  on the strength of it, and B3 confirmed the move had not landed.
+
+**Root cause of all three failures: they assumed one null per stub.** The full
+0.5–14GHz census found **12 nulls for 6 stubs**. The earlier "5 nulls for 6
+stubs" mystery was a search-window artifact — 3.5–9.0GHz simply could not see
+the rest. Once a stub can own two nulls, one-null-per-stub bookkeeping is not
+a weak argument, it is an invalid one.
+
+Coupling is measurable the same way: deleting S4 moved the 8.125GHz null to
+8.375 (+3.1%) at matched mesh — about 10× the effect deleting S1 has — which
+is what makes S4/S5 a better hybridization candidate than the S1/S3 pair
+Rev 18 chased.
+
+## 15. A folded stub can own a null PAIR
+
+S6's two nulls are split **±6.84% about a geometric mean of 7.094GHz**, ratio
+**1.1416**. Both vanish on deletion; every other null survives within 0.3%.
+
+The pair is S6's own, not a neighbour's. Predicting where it sat at S6's
+**old** 3860.9µm length, from the new length's measured k_eff and ratio alone
+by pure length scaling:
+
+```
+predicted  11.070 / 12.637 GHz   centre 11.8279   (k_eff 0.6886, ratio 1.1416)
+observed   11.110 / 12.535 GHz   centre 11.8010   (k_eff 0.6902, ratio 1.1283)
+           centre agrees to 0.23%, ratio to 1.17%
+```
+
+Those observed values are the v3 census's own 11.110(−102dB) and
+12.535(−18dB), which had no owner until this calculation. **A hybridization
+with a fixed-frequency neighbour would give a detuning-dependent splitting,
+not a ratio preserved to ~1% across a 1.67× frequency move.**
+
+### 15.1 …but no *isolated* fold has ever shown one
+
+Re-reading the Rev 17 fold experiment's own saved full-band sweeps
+(`HFSS/foldexp_*_S21.csv` — no new solve), each variant has exactly **one**
+resonance over 0.5–14GHz: V-fold-current 6.830, V-fold-wide 5.680, V-L 5.045.
+Drop the depth threshold entirely and each trace has four local minima — the
+real null plus three shallow features near 1.9, 8.1 and 11.6GHz that sit
+within a few hundred MHz of each other across all three variants, i.e. harness
+artifacts. Where a 1.1416-ratio partner would sit there is no local minimum at
+all, only the skirt of the real null.
+
+**These two facts are not in conflict, though it is easy to write them up as
+if they were.** The prediction is that a *wider* gap converges the pair toward
+a single null — and V-fold-wide is the wide-gap case (1000µm) showing one
+null, which confirms that rather than refuting it. V-fold-current is 3 runs, a
+three-line coupled system with three eigenmodes whose coupling to the
+through-line differs per mode; its single visible null is not the same
+measurement as a two-line split.
+
+**The actual gap in the evidence is narrow: S6's exact topology — two runs at
+a 400µm gap — has never been run in isolation.** V-fold-current is 3 runs at
+400µm; V-fold-wide is 2 runs at 1000µm. Neither is it. That single missing
+point is what `filter_BB_splitpair_gap_HFSS.py` gates on.
+
+### 15.2 What this does to sec 8's k_eff table
+
+Sec 8's numbers stand as measurements — they are genuine single nulls over the
+full band, not windowed artifacts. But **`k_eff` is now an ambiguous quantity
+for a folded stub unless you say which null it refers to.** Sec 8's values
+refer to the one observed null; B4's 0.6886 refers to a pair *centre*. If
+V-fold-wide's single null is really an unresolved pair, its 0.792 is a centre
+too and the two are comparable — in which case 0.792 (1000µm gap) versus
+0.6886 (400µm gap) *is* the gap effect. If it is not, they are different
+quantities and must not be put in the same column. This is unresolved.
+
+## 16. Off-resonance susceptance is a first-order effect
+
+Deleting S6 changed **eight** of the nine modes, by −4.6 to +14.4dB, most of
+them nowhere near either of S6's own nulls:
+
+```
+mode        S6 present   S6 absent   delta
+buffer 1      -25.44      -21.43     +4.0
+buffer 2      -24.54      -20.85     +3.7
+storage 1     -15.76 FLAG -20.38 PASS  -4.6
+storage 2     -23.60      -20.07     +3.5
+storage 3     -37.10      -22.73    +14.4
+storage 4     -40.26      -29.19    +11.1
+storage 5     -21.09      -21.13     -0.0
+storage 6     -23.76      -20.09     +3.7
+storage 7     -23.88      -19.76 FLAG +4.1
+```
+
+Both configurations score **8/9**, and neither dominates: S6 present has one
+bad flag (−4.24dB) with comfortable margins elsewhere; S6 absent has one
+marginal flag (−0.24dB, inside mesh noise) but six modes within 1.5dB of the
+line.
+
+A stub loads the line at *every* frequency, and an open stub's susceptance is
+capacitive below its resonance and inductive above — so the same stub
+contributes with **opposite sign** on either side of its own null. That is why
+S6 helps seven modes and hurts one, and why **S6 currently harms the very mode
+it was moved to fix.**
+
+**Consequence: the ≤1.0GHz null-spacing rule is not sufficient.** Null
+placement sets where attenuation is infinite; susceptance summation sets
+everything in between, and the numbers above show that "everything in between"
+runs to double-digit dB. Placement candidates should be screened in the ABCD
+circuit model, which captures susceptance summation natively even without a
+mutual-coupling term. Its failure as a *forward predictor* in Rev 16 does not
+disqualify it as a *ranking* tool for this question.
+
+## 17. Process lessons from Rev 19–20
+
+- **Do not change geometry and mesh in the same step.** B3 did (census
+  6.0GHz/δS 0.02 → confirm 3.5GHz/δS 0.005) and the null rearrangement above
+  6GHz became unattributable. Every later run has been mesh-matched to its own
+  comparison, and every one of those produced a clean answer.
+- **A deletion run must not print the confirmation run's banner.** The
+  `--delete` path initially reported "Rev 19 B3 — confirmation" and ran a
+  "DID S6 MOVE?" check that is meaningless when S6 is absent. Shared code
+  paths are right; shared *narration* is not.
+- **Per-stub overrides must be threaded through the HFSS replay too.** Rev 18
+  added `d_perp`/`run_gap` overrides to `filter_BB.py` and
+  `verify_filter_BB_hfss_export.py` kept using module globals — HFSS would
+  have solved d_perp=1000/r=235 while the mask drew 1200/535. Caught only by
+  comparing the dims JSON's `run_length` (2549.58µm) against the replay's
+  (3356.44µm). Second occurrence of the same class; see sec 12.
+- **The report table is not the geometry.** A separate instance of the same
+  bug printed `D_PERP_UM` and a recomputed `run_gap` in the stub table while
+  the build used per-stub values, so S1 showed d_perp=1000/run_gap=400
+  alongside an impossible bend_radius=535. The internal inconsistency was the
+  only tell.
+- **Check the all-pairs clearance after any length change.** Lengthening S6 to
+  6437µm sent its U-turn to within **88.5µm** of S4's, because both fold the
+  same way over an identical x span. `fold_dir=-1` fixed it (88.5 → 2756.8µm).
+  Same override, same reason, as S3's Rev 13 fix.
+- **Write up the refutation before the confirmation.** An earlier draft of
+  `filter_BB_splitpair_gap_HFSS.py` claimed the isolated single-null data
+  refuted the split-pair premise. It does not — see sec 15.1 — and the error
+  was an argument ("3 runs at 400µm is more coupling than S6") that sounded
+  mechanical but ignored that a three-line system is not a two-line one.
+  Caught by checking the length-scaling prediction *before* committing the
+  claim, not after.
