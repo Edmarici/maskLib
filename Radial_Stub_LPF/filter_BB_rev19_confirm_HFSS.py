@@ -37,6 +37,15 @@ from filter_BB_comb_score import COMB, PASS_DB  # noqa: E402
 DESIGN_NAME = 'Rev19_B3_Confirm'
 OUT_PREFIX = 'v4_comb'
 
+# Optional stub deletion, set from the command line:
+#   python filter_BB_rev19_confirm_HFSS.py --delete 6.0GHz --design X --prefix Y
+# Deliberately the SAME script and therefore the same sweep specs, adaptive
+# frequency and delta_S as the confirmation run itself. A separate
+# delete-test script would be free to drift in configuration, and B3 has
+# already been confounded once by comparing runs whose mesh differed - the
+# fix is one code path, not two carefully-synchronised ones.
+DELETE_LABEL_PREFIX = None
+
 COARSE_START_GHZ = 0.5
 COARSE_STOP_GHZ = 14.0
 COARSE_COUNT = 2701          # 5MHz
@@ -56,6 +65,23 @@ def nulls(f, s, lo, hi, depth=-15.0):
             if lo <= f[i] <= hi and s[i] < s[i - 1] and s[i] < s[i + 1] and s[i] < depth]
 
 
+def _parse_args(argv):
+    """Tiny hand-rolled parser - argparse would pull in help/usage text that
+    obscures this file's real entry point, which is the no-argument
+    confirmation run."""
+    global DESIGN_NAME, OUT_PREFIX, DELETE_LABEL_PREFIX
+    i = 0
+    while i < len(argv):
+        if argv[i] == '--delete':
+            DELETE_LABEL_PREFIX = argv[i + 1]; i += 2
+        elif argv[i] == '--design':
+            DESIGN_NAME = argv[i + 1]; i += 2
+        elif argv[i] == '--prefix':
+            OUT_PREFIX = argv[i + 1]; i += 2
+        else:
+            raise SystemExit('unknown argument %r' % argv[i])
+
+
 def main():
     project = FL.connect_project()
     desktop = FL.HFSS.HfssApp().get_app_desktop()
@@ -64,6 +90,14 @@ def main():
           % (FL.PROJECT_NAME, len(same), '  <== MORE THAN ONE' if len(same) > 1 else ''))
 
     geom = FL._load_geometry()
+    if DELETE_LABEL_PREFIX:
+        dropped = [p[0] for p in geom['pieces'] if p[0].startswith(DELETE_LABEL_PREFIX)]
+        assert dropped, 'nothing matched %r' % DELETE_LABEL_PREFIX
+        geom = dict(geom)
+        geom['pieces'] = [p for p in geom['pieces']
+                          if not p[0].startswith(DELETE_LABEL_PREFIX)]
+        print('DELETION RUN: removed %d piece(s) of %s -> %s'
+              % (len(dropped), DELETE_LABEL_PREFIX, ', '.join(dropped)))
     dims = FL._load_dims()
     s6 = dims['stubs'][-1]
     print('S6 under test: label %s, target %.2fGHz, realized %.4fum, fold_dir %+d'
@@ -111,7 +145,11 @@ def main():
         return float(s21[int(np.argmin(np.abs(f - x)))])
 
     print('=' * 78)
-    print('Rev 19 B3 - confirmation, S6 retargeted 8.0 -> 5.98GHz')
+    if DELETE_LABEL_PREFIX:
+        print('Rev 19 - DELETION RUN, %s removed (attribution, not a design candidate)'
+              % DELETE_LABEL_PREFIX)
+    else:
+        print('Rev 19 B3 - confirmation, S6 retargeted 8.0 -> 5.98GHz')
     print('  mesh: delta_S %.4f (v3: 0.0037).  convergence: %s' % (CONFIRM_MAX_DELTA_S, conv))
     print('=' * 78)
     print('MODE-COMB SCORECARD  (PASS = S21 <= %.0fdB; buffer rows = worst across +/-0.15GHz)' % PASS_DB)
@@ -148,6 +186,11 @@ def main():
     print('  %s' % ', '.join('%.3f(%.0fdB)' % p for p in alln))
     print('  in the comb range 4.2-8.2GHz: %s'
           % ', '.join('%.3f' % p[0] for p in alln if 4.2 <= p[0] <= 8.2))
+    if DELETE_LABEL_PREFIX:
+        print('  (the S6-moved check below is meaningless in a deletion run - skipped)')
+        print('-' * 78)
+        _report_tail(f, s21, at)
+        return 0
     print('  DID S6 MOVE? expected a new null near 5.98GHz, and 9.970GHz to vanish:')
     near = [p for p in alln if 5.7 <= p[0] <= 6.3]
     old = [p for p in alln if 9.7 <= p[0] <= 10.2]
@@ -161,6 +204,11 @@ def main():
         print('    -> NOT CONFIRMED: no null near 5.98. The inferred S6 assignment was wrong.')
 
     print('-' * 78)
+    _report_tail(f, s21, at)
+    return 0
+
+
+def _report_tail(f, s21, at):
     print('DRIVE BAND (0.5-3.5GHz confirmed still the passband this revision):')
     for x in PASSBAND_SPOTS:
         print('  %.1f GHz : %+7.2f dB' % (x, at(x)))
@@ -177,8 +225,8 @@ def main():
     print('8-14GHz features above -30dB: %d' % len(pk))
     print('  %s' % (', '.join('%.2f(%.0fdB)' % p for p in pk) if pk else 'none'))
     print('=' * 78)
-    return 0
 
 
 if __name__ == '__main__':
+    _parse_args(sys.argv[1:])
     sys.exit(main())
