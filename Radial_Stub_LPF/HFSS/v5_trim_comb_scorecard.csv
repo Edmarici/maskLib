@@ -1,0 +1,10 @@
+index,mode,freq_ghz,s21_db,verdict,margin_db
+1,buffer 1,4.500,-25.82,PASS,5.82
+2,buffer 2,5.000,-23.35,PASS,3.35
+3,storage 1,5.792,-15.84,FLAG,-4.16
+4,storage 2,6.160,-23.91,PASS,3.91
+5,storage 3,6.528,-37.79,PASS,17.79
+6,storage 4,6.897,-39.43,PASS,19.43
+7,storage 5,7.265,-22.03,PASS,2.03
+8,storage 6,7.633,-23.84,PASS,3.84
+9,storage 7,8.001,-23.83,PASS,3.83
