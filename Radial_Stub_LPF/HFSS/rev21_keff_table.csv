@@ -1,0 +1,11 @@
+case,length_um,null_ghz,k_eff,provenance
+foldexp 3run/400um,6987.9008,6.830,0.6589,"isolated, Rev17 B2"
+foldexp 2run/1000um,6987.9008,5.680,0.7923,"isolated, Rev17 B2"
+foldexp L-geometry,6987.9008,5.050,0.8911,"isolated, Rev17 B2"
+foldexp straight,6987.9008,5.450,0.8257,"isolated, WIDE bore - not comparable"
+S6 topology 2run/400um,6436.9032,6.780,0.7205,"isolated, Rev20 B2"
+"S6 in cascade, old len",6436.9032,6.640,0.7357,"cascade, Rev19 B4"
+"S6 in cascade, frozen",7379.3227,5.900,0.7223,"cascade, Rev20 confirm"
+"S1 in cascade, pre-trim",8820.2836,4.340,0.8215,"cascade, Rev19 B3"
+"S1 in cascade, frozen",8749.7214,4.370,0.8224,"cascade, Rev20 confirm"
+"S2 in cascade, frozen",9776.0928,4.870,0.6605,"cascade, ASSIGNED not tested"
