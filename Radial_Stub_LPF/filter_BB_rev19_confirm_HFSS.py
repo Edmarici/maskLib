@@ -189,7 +189,7 @@ def main():
         print('  NOT comparable on absolute dB against B3/B4 (delta_S 0.005). Read it')
         print('  only against the other probe-mesh run of this pair.')
     else:
-        print('Rev 19 B3 - confirmation, S6 retargeted 8.0 -> 5.98GHz')
+        print('Confirmation run - %s' % DESIGN_NAME)
     print('  mesh: delta_S %.4f (v3: 0.0037).  convergence: %s'
           % (PROBE_MAX_DELTA_S if MESH == 'probe' else CONFIRM_MAX_DELTA_S, conv))
     print('=' * 78)
@@ -238,18 +238,15 @@ def main():
         print('-' * 78)
         _report_tail(f, s21, at)
         return 0
-    print('  DID S6 MOVE? expected a new null near 5.98GHz, and 9.970GHz to vanish:')
-    near = [p for p in alln if 5.7 <= p[0] <= 6.3]
-    old = [p for p in alln if 9.7 <= p[0] <= 10.2]
-    print('    near 5.98 : %s' % (', '.join('%.3f(%.0fdB)' % p for p in near) if near else 'NONE'))
-    print('    near 9.97 : %s' % (', '.join('%.3f(%.0fdB)' % p for p in old) if old else 'gone'))
-    if near and not old:
-        print('    -> CONFIRMED: S6 owned 9.970GHz and has moved as designed.')
-    elif near and old:
-        print('    -> PARTIAL: a null appeared near 5.98 but 9.97 survives - 9.97 was NOT S6.')
-    else:
-        print('    -> NOT CONFIRMED: no null near 5.98. The inferred S6 assignment was wrong.')
-
+    # The Rev 19 "did S6 move?" check that used to live here has been REMOVED,
+    # not merely disabled. It asked whether 9.970GHz would vanish, on the
+    # strength of a k_eff inference that Rev 19 B4 refuted by deletion and
+    # Rev 20 B3 refuted again by length scaling (9.965 is still there across
+    # three different S6 lengths). Leaving a check whose premise is dead is how
+    # a stale conclusion gets re-read as a live one - the same failure as the
+    # deletion runs printing the confirmation banner. Attribution questions get
+    # answered by --delete, which is the only method that has ever been right
+    # here.
     print('-' * 78)
     _report_tail(f, s21, at)
     return 0
