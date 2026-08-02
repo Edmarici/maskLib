@@ -777,3 +777,135 @@ Sec 16 said it was first-order. Rev 20 sharpens the bound in both directions:
   and was simply a badly-chosen test — buffer 2 sits 0.79GHz from the new
   null, so being helped is ordinary. Logged as a bad test rather than quietly
   dropped.
+
+## 19. Rev 21 — close-out on the frozen configuration
+
+Tagged **`filter_BB_v4_pass9of9`**. Reproducibility was verified rather than
+asserted: a clean worktree checked out at the tag and rebuilt gives a
+**bit-identical dims JSON** (sha256 `e39c567a…`) and a GDS whose **XOR against
+the frozen copy is 0.000000 µm²**, checked per layer. The DXFs differ in
+exactly two values each — the `$TDCREATE`/`$TDUPDATE` Julian timestamps.
+
+> **Compare geometry with the XOR, never with a file hash.** DXF and GDS byte
+> hashes are *expected* to churn on every rebuild. A hash mismatch is not a
+> geometry change. See [`FREEZE_v4_pass9of9.md`](../FREEZE_v4_pass9of9.md).
+
+### 19.1 Buffer modes pass across their uncertainty, not just at nominal
+
+Buffer 1 and 2 are specified at 4.500 and 5.000 GHz ±0.15 GHz pending
+simulation. From the frozen tight-mesh sweep, no new solve:
+
+| mode | window | worst | where | verdict |
+|---|---|---|---|---|
+| buffer 1 | [4.35, 4.65] | −27.49 dB | 4.580 | PASS +7.49 |
+| buffer 2 | [4.85, 5.15] | −28.82 dB | 4.920 | PASS +8.82 |
+
+So the stronger claim is available: it passes **across the stated
+uncertainty**, not merely at the nominal frequencies.
+
+### 19.2 Tolerance sensitivity
+
+Global perturbations are computed by **rescaling the measured curve, not by
+modelling**. A uniform change in every length, or in eps_eff, rescales the
+whole S21(f) response in frequency for a non-dispersive TEM structure, so the
+perturbed scorecard is the tight-mesh sweep resampled — exact to that
+approximation, with no fitting. (`filter_BB_circuit_model.py` is deliberately
+not used: it never validated as a forward predictor, and it produces one pole
+per stub, which cannot represent this cascade's measured null structure.)
+
+**All lengths ±0.25%, eps_eff ±1% → no mode falls below 20 dB.** Worst
+margins: storage 5 +1.00, storage 6 +2.35, storage 7 +2.43, storage 1 +3.39.
+
+A structural point worth carrying: **modes sitting ON a null have large
+nominal margin but high sensitivity** (storage 1 swings 9.5 dB across the
+eps_eff range); **modes sitting BETWEEN nulls have small margin but are nearly
+insensitive** (storage 6 moves 0.05 dB). They arrive at similar worst cases
+from opposite directions, so nominal margin alone does not rank fragility.
+
+**The single-stub case is the one that bites.** A 1% length error on S6 alone
+drives storage 1 to **−14.65 dB, failing by 5.35 dB**:
+
+| S6 length error | its null | storage 1 | margin |
+|---|---|---|---|
+| +1.0% (longer) | 5.842 | −38.00 | +18.00 |
+| nominal | 5.900 | −28.54 | +8.54 |
+| −1.0% (shorter) | 5.960 | −14.65 | **−5.35** |
+
+The cause is specific: **S6's null was aimed at 5.792 GHz and landed at 5.900,
+108 MHz high.** Storage 1's healthy-looking +8.5 dB comes from a null sitting
+*near* it, not on it, and the exposure is one-sided — S6 too short pushes the
+null further away.
+
+Linewidth ±5 µm is negligible, and this is **measured, not assumed**: the
+field-plot-verified 6 GHz extraction gives eps_eff 5.6795 / Zpi 69.71 Ω at
+w=70 µm against 5.6826 / 69.70 Ω at w=125 µm, so a 55 µm width change moves
+eps_eff <0.1% and Zpi ~0.01%. Expected physically — with no ground plane the
+mode is set by the bore, not the strip.
+
+> Method note. The first version of the single-stub estimate applied every
+> null's shift to every mode, which made a 1% error in the 8.730 GHz stub
+> appear to cost buffer 1 17 dB. It cannot — that null does not control the
+> response at 4.5 GHz. Only the nearest null is applied now, and the
+> mode-to-null distance is printed so the reader can see where the
+> approximation thins out.
+
+### 19.3 Null inventory — how each ownership was established
+
+Of 10 nulls across 0.5–14 GHz in the frozen configuration: **3
+deletion-confirmed, 3 assigned but never tested, 3 unowned, 1 unknown.**
+
+| GHz | owner | established by |
+|---|---|---|
+| 4.370 | S1 | deletion |
+| 4.870 | S2 | **assigned, never tested** |
+| 5.470 | S3 | **assigned, never tested** |
+| 5.900 | S6 | deletion |
+| 6.970 | S4 | deletion |
+| 7.550 | **?** | needs S6 present but ignores S6 length |
+| 8.730 | S5 | **assigned, never tested** |
+| 9.965 / 11.360 / 12.375 | — | unowned; explicitly *not* S6 |
+
+The distinction is load-bearing, not pedantry: **this campaign's record on
+untested assignments is 0 for 4** (sec 14, sec 18.3).
+
+## Appendix B — `k_eff` on a single definition
+
+**DEFINITION A**, used throughout and verified below:
+
+```
+k_eff = f_bare / f_null      f_bare = c / (4 · L · sqrt(eps_eff))
+L     = drawn centreline INCLUDING arc length
+      = d_perp + turn_arc + n · run_length
+      = exactly what folded_stub() solves and dims JSON reports as
+        realized_length_um
+```
+
+| case | L µm | null GHz | k_eff | provenance |
+|---|---|---|---|---|
+| foldexp 3-run/400 µm | 6987.9008 | 6.830 | 0.6589 | isolated |
+| foldexp 2-run/1000 µm | 6987.9008 | 5.680 | 0.7923 | isolated |
+| foldexp L-geometry | 6987.9008 | 5.050 | 0.8911 | isolated |
+| foldexp straight | 6987.9008 | 5.450 | 0.8257 | isolated, **wide bore — not comparable** |
+| S6 topology 2-run/400 µm | 6436.9032 | 6.780 | 0.7205 | isolated |
+| S6 in cascade, old length | 6436.9032 | 6.640 | 0.7357 | deletion |
+| S6 in cascade, frozen | 7379.3227 | 5.900 | 0.7223 | deletion |
+| S1 in cascade, pre-trim | 8820.2836 | 4.340 | 0.8215 | deletion |
+| S1 in cascade, frozen | 8749.7214 | 4.370 | 0.8224 | deletion |
+| S2 in cascade, frozen | 9776.0928 | 4.870 | 0.6605 | **assigned, not tested** |
+
+**The suspected length-reference discrepancy does not exist.** Every `k_eff`
+quoted anywhere in these notes recomputes to <0.002 under definition A. The
+alternative — straight runs only, arcs excluded — would give `k_eff` > 1 for
+two cases (2-run/1000 → 1.2394, S1 → 1.1502), which is unphysical under the
+fold-cancellation reading, so it was never in use.
+
+**The real inconsistency is the numerator, in two places:**
+
+1. **S6 was quoted at 0.6886**, computed against the geometric *mean* of a
+   null pair while every other entry uses a measured null. That pair reading
+   is withdrawn (sec 18.3), so **0.6886 is retired** in favour of 0.7357 (old
+   length) / 0.7223 (frozen).
+2. **Sec 14 quotes S2 at 0.664**, which corresponds to a 4.845 GHz null, not
+   the 4.760 GHz cited in the same sentence.
+
+Both are numerator mismatches. Neither is a length-reference problem.
