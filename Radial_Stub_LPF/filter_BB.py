@@ -391,8 +391,44 @@ STUBS = [
     # storage 7. Moving it to 6.612 should push both toward their measured
     # S6-ABSENT values (-20.09 and -19.76), so this may trade storage 1's
     # -4.2dB flag for a ~-0.2dB one at storage 7.
-    dict(f=5.98, w=70.0, side=-1, n_par_runs=2, fan_term=0.0, dl_um=2120.8689,
-         fold_dir=-1),
+    # ---- Rev 21: S6 GAINS A FAN TERMINATOR (Rout 300um, matching S2-S5) ----
+    # WHY. Rev 21 Q2's sensitivity found the design's one real fragility: a 1%
+    # length error on S6 ALONE drives storage 1 from -28.5 to -14.65dB, a
+    # 5.35dB failure, because S6's zero was aimed at 5.792 and landed at
+    # 5.900 - storage 1 leans on a zero sitting NEAR it, not ON it, and the
+    # exposure is one-sided (S6 short pushes the zero further away). A bare
+    # open end gives a sharp zero; a fan broadens it, which is exactly the
+    # property a mode 108MHz off the zero needs. Depth is not the scarce
+    # quantity here - a zero is infinitely deep and narrow - breadth is.
+    #
+    # LENGTH TREATMENT: the drawn centreline is HELD at 7379.3227um, unchanged
+    # from the frozen filter_BB_v4_pass9of9 tag, by folding the fan correction
+    # back into dl_um:
+    #     fan_correction = K_FAN_UM * Rout * (f/F_REF) = 0.6*300*(5.98/7.0)
+    #                    = 153.7714um
+    #     dl_um: 2120.8689 -> 2274.6403285714   (target_length unchanged)
+    # So the fan is the ONLY variable in the next solve. The alternative -
+    # leaving dl_um alone and letting fan_length_correction_um() shorten the
+    # stub by 153.77um - is what the machinery is designed for (hold the zero,
+    # broaden it), but it changes two things at once and leans on a theory
+    # correction whose error bar has never been measured. Every correction of
+    # that class in this campaign has been percent-level wrong.
+    #
+    # PREDICTED SIDE EFFECT, stated before the solve: the fan's end-loading
+    # adds electrical length, so the zero moves DOWN from 5.900 by roughly the
+    # correction's own 2.08%, i.e. toward ~5.78GHz. Storage 1 is at 5.792. If
+    # that lands, this one change both broadens the zero AND centres it,
+    # taking storage 1's worst case from -5.35dB to roughly +16dB. Treat the
+    # number as a direction, not a prediction - see above.
+    #
+    # NO CODE CHANGE NEEDED for the HFSS export: the folded-stub replay in
+    # verify_filter_BB_hfss_export.py already handles fan terminators
+    # generically (the same path S2-S5 use), so the fan reaches both the DXF
+    # and the Ansys geometry from this one table edit. Verified by rebuilding
+    # rather than by reading - that replay has silently drifted from this file
+    # twice (DESIGN_NOTES sec 12).
+    dict(f=5.98, w=70.0, side=-1, n_par_runs=2, fan_term=300.0,
+         dl_um=2274.6403285714, fold_dir=-1),
     # Rev 17 D1: S7 (4.4GHz) DELETED outright. Rev 16's real solve found it
     # produced NO notch at all, while still costing ~2.5mm of line length and
     # adding a passband shunt susceptance - so it was pure cost. Removing it

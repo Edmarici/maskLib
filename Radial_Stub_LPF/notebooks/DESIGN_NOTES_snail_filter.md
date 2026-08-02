@@ -492,12 +492,55 @@ assignments is 0 for 4** (Sec. 13).
 | 5.470 | S3 | assigned, never tested |
 | 5.900 | S6 | **deletion** |
 | 6.970 | S4 | **deletion** |
-| 7.550 | **?** | needs S6 present, ignores S6 length (Q1) |
-| 8.730 | S5 | assigned, never tested |
+| 7.550 | **S5 + S6 jointly** | **deletion** — dies if *either* is removed (Sec. 3.9) |
+| 8.730 | S5 | **deletion** |
 | 9.965 / 11.360 / 12.375 | — | unowned; explicitly *not* S6 |
 
-Three deletion-confirmed, three assigned but untested, three unowned, one
-unknown.
+Five deletion-confirmed (one of them jointly owned), two assigned but
+untested (S2, S3), three unowned.
+
+### 3.9 A zero can belong to a PAIR of stubs, not to one (Q1, closed)
+
+The 7.515 GHz zero had resisted attribution for two revisions: it vanishes
+when S6 is deleted, yet it ignores S6's length (a 14.64% change moved it
+0.40%). Rev 21 settled it by deleting S4 and S5 in turn at the frozen
+geometry, same mesh:
+
+| owner | intact | delete S4 | delete S5 |
+|---|---|---|---|
+| S1 | 4.350 | 4.340 | 4.340 |
+| S2 | 4.850 | 4.850 | 4.850 |
+| S3 | 5.470 | 5.480 | 5.510 |
+| S6 | 5.900 | 5.925 | 5.910 |
+| S4 | 6.970 | **vanishes** | 7.135 |
+| **?** | 7.515 | 7.215 (−4.0%) | **vanishes** |
+| S5 | 8.710 | 8.655 | **vanishes** |
+
+> **The 7.515 GHz zero requires BOTH S5 and S6. Deleting either partner
+> destroys it; deleting a non-partner (S4) only perturbs it.**
+
+This also explains the behaviour that made it look paradoxical: its frequency
+is set mainly by **S5**, which never moved, so it was insensitive to S6's
+length while still depending on S6's presence.
+
+**Consequence for the method.** One-stub-per-zero bookkeeping is not merely
+imprecise here, it is structurally wrong: with 6 stubs the design has 10
+zeros, and at least one of them belongs to no single stub. A deletion test
+answers "does this structure participate", not "does this structure own" -
+and participation is the question that matters for a design edit.
+
+Two by-products of the same runs:
+
+- **S5's ownership of 8.710 GHz is now deletion-confirmed** (it was
+  "assigned, never tested" in Sec. 3.8).
+- **S4 is the most load-bearing stub in the design.** Deleting it collapses
+  the filter from 9/9 to **2/9**, with seven modes flagging - and its own zero
+  is at 6.970, so almost all of that is off-resonance susceptance (Sec. 3.6).
+  Deleting S5 costs 7/9, including storage 1 at -3.94 dB, where removing S5
+  opens a narrow transmission *peak* right at the mode. **Caveat:** that
+  spike is narrow and read from an interpolating sweep, which reconstructs
+  sharp features poorly in both directions; the qualitative collapse is
+  certain, the exact depth is not.
 
 ---
 
@@ -644,14 +687,8 @@ the 5 x 3 mm SNAIL keep-out.
   fraction, kappa_bare, required A]) and replace the 20 dB assumption. This
   defines "done."
 - **O1:** package pocket/clamp drawing; pin tube position and diameter.
-- **Q1 (Rev 21, IN PROGRESS):** identify the partner behind the 7.550 GHz
-  zero. S4 deletion is done and did **not** kill it - it survived, shifted
-  -4.0% (7.515 -> 7.215 at probe mesh) and shallower. So the zero is not S4's
-  either; deleting S4 perturbs it strongly but does not own it. S5 deletion is
-  running. Same run measured that **deleting S4 collapses the filter to 2/9** -
-  seven modes flag - which makes S4 the most load-bearing stub in the design
-  by a wide margin, almost entirely through off-resonance susceptance
-  (Sec. 3.6), since its own zero sits at 6.970.
+- **Q1 (Rev 21, CLOSED):** the 7.515 GHz zero is a **two-body feature of the
+  S5-S6 pair** - see Sec. 3.9.
 - **Q2 (CLOSED):** see Sec. 3.7. Global tolerances all pass; a 1% error on S6
   alone fails storage 1 by 5.35 dB.
 - **Q3 (CLOSED):** buffer worst-cases are -27.49 and -28.82 dB across the full
@@ -660,7 +697,16 @@ the 5 x 3 mm SNAIL keep-out.
   7516.92 um). Largest available robustness gain in the design: converts
   storage 1's worst case from -5.35 dB to about +16 dB. Interacts with the
   fan below - resolve together.
-- **NEW (Rev 21):** add a fan terminator to S6 (Rout 300 um, matching S2-S5)
+- **NEW (Rev 21, GEOMETRY APPLIED — NOT YET SOLVED):** fan terminator on S6
+  (Rout 300 um, r_in 49.50 um, 90 deg, axial), drawn centreline held at
+  7379.3227 um, dl_um 2120.8689 -> 2274.6403285714. Rebuild verified: S1-S5
+  unchanged to 1e-6 um, merged polygon count 1, **0 holes** (the fan-on-a-
+  folded-trace hole risk did not materialize), all stub-to-stub clearances
+  unchanged at >= 1200 um, S6's transverse edge moved to x=1532.9 (1583 um of
+  bore clearance), transverse budget unchanged at 5227.1/6000 um. The HFSS
+  replay picked the fan up through its existing generic path - S6 now yields
+  7 pieces including `6.0GHz_fan_taper` and `6.0GHz_fan`, total 55 vs 53.
+  **Needs a solve to place the zero.** Rationale:
   to broaden its zero rather than leave it sharp - directly targeting the
   Sec. 3.7 fragility, since a broader zero is less sensitive to where exactly
   it lands. Decision taken: hold the drawn length at 7379.3227 um and fold the
@@ -720,6 +766,13 @@ vindication.
 
 > **No zero is attributed to a structure until that structure is deleted and
 > the zero is observed to vanish.**
+
+**Amended Rev 21:** deletion establishes *participation*, not sole ownership.
+The 7.515 GHz zero dies when either S5 or S6 is removed (Sec. 3.9), so a
+single deletion would have "proved" it belonged to whichever stub was tried
+first. **Delete every plausible participant, not just one**, and read a
+vanishing zero as "this structure participates" rather than "this structure
+owns it."
 
 Deletion needs no frequency matching, no search window, no depth threshold, and
 no assumption about how far a fold has moved a resonance. It also measures, in
