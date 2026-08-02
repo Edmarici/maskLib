@@ -509,6 +509,13 @@ Rev 18 chased.
 
 ## 15. A folded stub can own a null PAIR
 
+> **15's length-scaling argument is WITHDRAWN by Rev 20 B3 - see sec 18.3.**
+> S6 really does show two nulls in the cascade (that is deletion-confirmed and
+> stands). But they are not a rigid pair: moving S6 14.64% moved the lower
+> null 11.08% and the upper one 0.40%, i.e. not at all. The evidence below
+> that they scale together was an assignment that was never deletion-tested,
+> and it is now refuted across three S6 lengths.
+
 S6's two nulls are split **±6.84% about a geometric mean of 7.094GHz**, ratio
 **1.1416**. Both vanish on deletion; every other null survives within 0.3%.
 
@@ -631,3 +638,142 @@ disqualify it as a *ranking* tool for this question.
   mechanical but ignored that a three-line system is not a two-line one.
   Caught by checking the length-scaling prediction *before* committing the
   claim, not after.
+
+## 18. Rev 20 — the filter passes, 9/9
+
+Confirm mesh (δS 0.005, 5 passes, final δ-S 0.0018621). Two geometry changes
+from the Rev 19 configuration: S1 trimmed 70.56µm, S6 lengthened 942.42µm.
+
+| mode | GHz | before | after | margin |
+|---|---|---|---|---|
+| buffer 1 | 4.500 | −25.44 | −27.49 | +7.5 |
+| buffer 2 | 5.000 | −24.54 | −28.82 | +8.8 |
+| storage 1 | 5.792 | **−15.76 FLAG** | **−28.23** | +8.2 |
+| storage 2 | 6.160 | −23.60 | −28.79 | +8.8 |
+| storage 3 | 6.528 | −37.10 | −27.06 | +7.1 |
+| storage 4 | 6.897 | −40.26 | −33.36 | +13.4 |
+| storage 5 | 7.265 | −21.09 | −21.38 | **+1.4** |
+| storage 6 | 7.633 | −23.76 | −22.38 | +2.4 |
+| storage 7 | 8.001 | −23.88 | −22.56 | +2.6 |
+
+Drive band unaffected: S21 @3.5GHz −0.58dB, ripple 3.39dB p-p. 8–14GHz still
+has open windows at 10.28 and 10.62GHz near −1dB (pre-existing).
+
+**Thinnest margin is storage 5 at +1.4dB against ~0.6dB mesh error there.**
+Real, but not comfortable — the first thing to re-check after any later edit.
+
+### 18.1 Mesh economics — the probe mesh is enough
+
+Measured twice on two different geometries, probe (δS 0.02, ~1h) against
+confirm (δS 0.005, ~7h):
+
+```
+B1, old geometry : mean 0.61dB, worst 2.25dB   (worst row: buffer 2)
+B3, new geometry : mean 0.45dB, worst 1.85dB   (worst row: buffer 2)
+```
+
+**Buffer 2 is reproducibly the most mesh-sensitive mode** — it is a
+worst-across-±0.15GHz row, so it samples wherever the grid happens to land.
+Use probe mesh for scorecard work and spend confirm mesh only on a result you
+intend to act on.
+
+**Null positions are the exception.** Probe reads them a mean 14MHz (worst
+35MHz) low, in the same direction every time, because an Interpolating
+sweep's rational reconstruction misplaces sharp minima. Any decision that
+turns on where a null *is* — every length edit — must use the discrete
+window, not the interpolating sweep.
+
+### 18.2 Length edits need no k_eff
+
+Confirmed twice on real solves:
+
+- S1, −0.80% length: null moved +30MHz against +35MHz predicted by pure 1/L.
+  Landed at 4.370 against a 4.375 target — 5MHz, one grid point.
+- S6 lower null, +14.64% length: 6.635 → 5.900 against 5.788 predicted
+  (+1.94% off — the loosest of the two, and see 18.3).
+
+`L_new = L_old × f_old/f_new` is the whole calculation. **Every k_eff round
+trip this campaign attempted landed percent-level off** (Rev 18's S1, Rev 19
+B2's S6); the direct frequency ratio has not.
+
+### 18.3 The "pair" is not a pair, and how that error was made
+
+Rev 20 B3 moved S6 by 14.64% and watched both its nulls:
+
+```
+S6 LOWER  6.635 -> 5.900   -11.08%   moved
+S6 UPPER  7.545 -> 7.515    -0.40%   did NOT move
+S4        6.990 -> 6.970    -0.29%   (for scale)
+S5        8.745 -> 8.710    -0.40%
+```
+
+The upper null drifted by exactly the amount uninvolved stubs drift. It is
+**not** the other half of a rigid pair.
+
+Sec 15's length-scaling argument is therefore **withdrawn**. Its evidence was
+that S6's nulls at its old 3860.9µm length "predicted" the census's 11.110 and
+12.535 to 0.23%. Across three lengths:
+
+```
+S6 3860.9um : 11.110 / 12.535
+S6 6436.9um : 11.310 / 12.330      1/L would give  6.664 /  7.519
+S6 7379.3um : 11.360 / 12.375      1/L would give  5.813 /  6.558
+```
+
+S6 grew 1.911× and those nulls moved +2.3% and −1.3%. They were never S6's.
+
+**How the error was made, because it is the campaign's signature failure:**
+that assignment was pure inference and was never deletion-tested. It was
+believed because it agreed to 0.23% with a number that was wanted. Sec 14
+already says every inference-based attribution here has been wrong; this was
+the fourth, and it was made *after* writing that sentence.
+
+What survives: the lower null is S6's own resonance (isolated measurement puts
+it 2.06% away) and scales with length. The upper null needs S6's **presence**
+— it vanishes on deletion — but ignores S6's **length**. Whichever neighbour
+or line section sets its frequency is unidentified. A deletion test at the
+current length would name it.
+
+### 18.4 A folded stub in isolation has one null
+
+Rev 20 B2 ran S6's exact topology — 2 runs, 400µm gap, its own length — alone
+on a through-line in the real bore: **one null at 6.780GHz**, no pair.
+
+That sits 2.06% from the cascade's lower null and 4.64% from the pair centre,
+which is what identifies the lower null as S6's own resonance.
+
+Consequence: **a two-notch folded stub cannot be designed.** There is no
+gap-to-span law to apply, because the span does not exist in isolation. Any
+future plan that wants one element to cover two frequencies needs a different
+mechanism, or an experiment that first reproduces the second null outside the
+cascade.
+
+### 18.5 Off-resonance susceptance, revisited
+
+Sec 16 said it was first-order. Rev 20 sharpens the bound in both directions:
+
+- **Large where the stub is near a mode.** Moving S6 changed storage 3 by
+  +10.04dB and storage 4 by +6.90dB *without either null landing on them*.
+- **Small where the stub is far.** Trimming S1 by 0.80% moved storage 1 by
+  0.09dB, against 4.6dB for deleting S6 outright. **S1 is not a lever on
+  storage 1 at any length worth drawing** — worth knowing before spending a
+  solve on a stub that looks adjacent on the table.
+
+### 18.6 Process
+
+- **A live-looking check on a dead premise is worse than no check.** The
+  confirmation driver kept printing Rev 19's "did S6 move? expect 9.970 to
+  vanish" test long after B4 had refuted its premise by deletion, and duly
+  emitted a confident verdict about a question nobody was asking. Deleted, not
+  suppressed. Same failure as the deletion runs printing the confirmation
+  banner.
+- **Lock predictions before the solve; score them after.** Rev 20 B3's locked
+  nine-row prediction scored **4/9** on a run that produced 9/9. Two misses
+  cancelled — storage 3 lost support predicted to gain, storage 6/7 kept
+  support predicted to lose. Without the locked file the result would have
+  read as vindication of reasoning that was substantially wrong.
+- **Write the falsifiers down too, including the bad ones.** One of the three
+  ("any mode outside 5.5–8.0GHz moves >2dB") triggered on buffer 2 at 3.62dB,
+  and was simply a badly-chosen test — buffer 2 sits 0.79GHz from the new
+  null, so being helped is ordinary. Logged as a bad test rather than quietly
+  dropped.
