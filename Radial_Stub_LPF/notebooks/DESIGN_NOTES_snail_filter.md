@@ -456,6 +456,16 @@ margins storage 5 +1.00, storage 6 +2.35, storage 7 +2.43, storage 1 +3.39.
 > worst-case values from opposite directions. Rank by worst case, not by
 > nominal.
 
+> **RESOLVED by the S6 fan (Rev 21) — see Sec. 3.10.** The fragility described
+> in the rest of this section was the reason the fan was added, and the fan
+> fixes it: storage 1's worst case under a ±1% S6 error goes from −15.66 dB
+> (fail) to −26.92 dB (pass), and its swing over that range from 22.6 dB to
+> 2.6 dB. The analysis below is kept because it is *why* the fan exists and
+> because the mechanism generalizes. **Storage 4 is now the most
+> tolerance-sensitive mode** (12.7 dB swing) for exactly the same structural
+> reason - it sits 83 MHz from S4's zero at 6.980 - but it carries enough
+> nominal depth to absorb it (worst case −27.3 dB).
+
 **The single-stub case is the one that bites.** A 1% length error on **S6
 alone** drives storage 1 to **-14.65 dB, failing by 5.35 dB**:
 
@@ -499,6 +509,39 @@ assignments is 0 for 4** (Sec. 13).
 Five deletion-confirmed (one of them jointly owned), two assigned but
 untested (S2, S3), three unowned.
 
+### 3.8.1 The lower band edge sits ~50 MHz below buffer 1's window
+
+Newly quantified in Rev 21, **pre-existing and not caused by any recent
+change** - it is present with and without the S6 fan and at both mesh grades.
+
+Going *down* in frequency from buffer 1's scored window, protection collapses
+almost immediately:
+
+| GHz | tight mesh (no fan) | probe (fan) |
+|---|---|---|
+| 4.500 | −28.08 | −29.09 |
+| 4.350 (window edge) | −36.55 | −50.91 |
+| 4.300 | **−19.58** | −24.63 |
+| 4.250 | **−8.07** | −12.46 |
+| 4.200 | — | −4.57 |
+
+**The 20 dB line is crossed at ~4.30 GHz at tight mesh, 50 MHz below the
+window's low edge**, and by 4.25 GHz there is essentially no protection at
+all. This is the band-block's lower edge doing what Sec. 2.5 item 3 says it
+must - the response has to recover somewhere below the lowest zero, and the
+drive band needs it to recover by 3.5 GHz - but the *proximity* to buffer 1
+had never been measured.
+
+**Consequence for Assumption 2 (Sec. 10).** The buffer frequencies are still
+pending simulation and carry ±150 MHz. Within that stated window the filter
+passes everywhere. But the uncertainty is **asymmetric in consequence**: a
+buffer 1 that lands high is harmless (−28.9 dB at 4.65), while one that lands
+even slightly below the stated window falls off a cliff. There is effectively
+**no guard band on the low side**.
+
+If the buffer-mode simulation returns a value below ~4.4 GHz, this needs
+re-opening before anything else in the design does.
+
 ### 3.9 A zero can belong to a PAIR of stubs, not to one (Q1, closed)
 
 The 7.515 GHz zero had resisted attribution for two revisions: it vanishes
@@ -541,6 +584,54 @@ Two by-products of the same runs:
   spike is narrow and read from an interpolating sweep, which reconstructs
   sharp features poorly in both directions; the qualitative collapse is
   certain, the exact depth is not.
+
+### 3.10 The S6 fan: trading depth for flatness, measured
+
+**Probe mesh, pending tight-mesh confirmation.** Change: S6 gains a 300 µm
+axial fan (r_in 49.50 µm, 90°) with its drawn centreline **held** at
+7379.3227 µm, so the fan is the only variable against the `v6_s6move`
+baseline.
+
+**It fixes the Sec. 3.7 fragility.** Storage 1 under a ±1% S6 length error:
+
+| | no fan | with fan |
+|---|---|---|
+| nominal | −28.65 | −28.24 |
+| **worst over ±1%** | **−15.66 FAIL** | **−26.92 PASS** |
+| swing over that range | 22.62 dB | **2.62 dB** |
+| flatness, mode ±100 MHz | 44.07 dB | **4.11 dB** |
+| worst nearby transmission peak | −9.35 @ 5.715 (77 MHz away) | −9.93 @ 5.600 (192 MHz away) |
+
+Under the same ±1% test the whole comb goes from **8/9 to 9/9**.
+
+**The mechanism is not the one that was predicted, and the difference is the
+point.** The expectation was that the fan would move the zero onto storage 1
+and broaden it. What happened instead: **the deep narrow zero dissolved.** The
+−102 dB notch at 5.900 GHz is gone, replaced by a broad shallow shelf running
+−24 to −30 dB across 5.65–6.10 GHz. Storage 1 is no longer *near* a sharp
+feature, which is why it stopped caring where that feature sits.
+
+> **A fan does not just widen a notch here - it can trade the notch for a
+> plateau.** Nominal attenuation at that frequency fell ~74 dB. Under a
+> mode-comb spec that costs nothing (Sec. 2.5: depth earns no credit, and
+> Sec. 2.3 already argued the composite floor is what matters), but it must be
+> stated rather than buried: **this change makes the filter deliberately
+> shallower and flatter.** On a spec that rewarded depth it would be a
+> regression.
+
+Cost, in full: storage 2 −5.11 dB, storage 4 −3.50 dB, storage 3 −2.29 dB, all
+from losing that deep zero's help across 6.1–6.9 GHz; buffer 2 gained 4.99 dB.
+All modes keep ≥ +2.4 dB, and the weakest margin in the design did not get
+weaker. The S5+S6 two-body zero (Sec. 3.9) moved 7.515 → 7.365 GHz, −2.0%.
+
+**Locked prediction scored 2 of 5 testable** (`HFSS/v8_prediction_locked.md`).
+Both misses were framing: the zero's landing frequency was predicted (it
+dissolved instead), and storage 1 was predicted to improve *nominally* (it
+improved in *robustness*, which is what mattered). The width prediction was
+not even scorable, because there is no longer a single zero to measure. One
+falsifier - "zero overshoots below 5.70" - **fired**, and on its own terms
+reads as failure; it is not, because it assumed the zero would survive as a
+zero. Logged as a badly-framed falsifier rather than passed over.
 
 ---
 

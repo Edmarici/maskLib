@@ -1,21 +1,36 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
-Rev 21 - assess the S6 fan against HFSS/v8_prediction_locked.md.
+Rev 21 - assess the S6 fan. Compares any two S21 CSVs at matched mesh.
 
-Mesh-matched one-variable diff: v6_s6move (probe mesh, 7379.3227um drawn, NO
-fan) against v8_s6fan (same mesh, same drawn length, WITH the 300um fan).
+  python filter_BB_fan_assess.py [baseline_prefix] [fanned_prefix]
+  defaults: v6_s6move (no fan)  vs  v8_s6fan (fan)
 
-WIDTH METRIC. Absolute-threshold widths are meaningless in this cascade - the
-composite floor is already below -30dB across 5.6-6.1GHz, so an absolute
-threshold measures the NEIGHBOURING stubs rather than S6 (master notes Sec.
-2.3). Width is therefore measured against the LOCAL COMPOSITE BASELINE: the
-mean of S21 over +/-0.25..0.5GHz around the zero, excluding the zero itself -
-the same convention filter_BB_fold_experiment_HFSS.minus3db_width() uses.
+WHY THIS IS WRITTEN ATTRIBUTION-FREE
+------------------------------------
+An earlier draft of this file located "S6's zero" and measured its width and
+displacement. That framing did not survive the solve. The fan did not move a
+zero - it DISSOLVED one: the -102dB notch at 5.900GHz is gone, replaced by a
+broad -24 to -30dB shelf across 5.65-6.10GHz, and the nulls that remain nearby
+cannot be assigned to S6 without new deletion tests. Any metric anchored on
+"the zero" is therefore either undefined or silently measures a neighbour.
 
-The headline question is not "did the zero move" but "is storage 1 still
-protected when S6's length is wrong by 1%". That is the Q2 fragility the fan
-was added to fix, and it is checked directly.
+Everything below is instead computed from the trace itself with no ownership
+claim:
+
+  robustness  - shift the whole local trace by +/-1% of the mode frequency and
+                take the worst. A 1% stub-length error shifts the response that
+                stub controls by ~1% in frequency (1/L scaling, confirmed twice
+                on real solves), so this is the right proxy and needs no
+                knowledge of which stub owns what.
+  flatness    - peak-to-peak swing over the mode +/-100MHz. This is the
+                quantity a fan is bought to improve.
+  worst peak  - the highest transmission peak near the mode and its distance,
+                since that is the feature that bites when anything shifts.
+
+Absolute-threshold notch widths are deliberately NOT used: the composite floor
+here is already below -30dB over wide spans, so an absolute threshold measures
+the neighbouring stubs rather than the stub of interest (master notes Sec 2.3).
 """
 import csv
 import os
@@ -25,11 +40,11 @@ import numpy as np
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 OUT = os.path.join(HERE, 'HFSS')
-BASE = os.path.join(OUT, 'v6_s6move_S21.csv')      # no fan
-FAN = os.path.join(OUT, 'v8_s6fan_S21.csv')        # with fan
 
 PASS_DB = -20.0
-STORAGE1 = 5.792
+LEN_ERR = 0.01          # the single-stub tolerance case from Rev 21 Q2
+FLAT_HALFWIDTH = 0.100  # GHz, for the flatness metric
+
 COMB = [(4.500, 'buffer 1', 0.15), (5.000, 'buffer 2', 0.15),
         (5.792, 'storage 1', None), (6.160, 'storage 2', None),
         (6.528, 'storage 3', None), (6.897, 'storage 4', None),
@@ -37,137 +52,96 @@ COMB = [(4.500, 'buffer 1', 0.15), (5.000, 'buffer 2', 0.15),
         (8.001, 'storage 7', None)]
 
 
-def load(p):
+def load(prefix):
+    p = os.path.join(OUT, '%s_S21.csv' % prefix)
+    if not os.path.exists(p):
+        raise SystemExit('%s not found' % p)
     f, s = [], []
     for r in csv.DictReader(open(p)):
         f.append(float(r['freq_ghz'])); s.append(float(r['S21_dB']))
     return np.array(f), np.array(s)
 
 
-def find_zero(f, s, lo, hi):
-    m = (f >= lo) & (f <= hi)
-    i = int(np.argmin(s[m]))
-    return float(f[m][i]), float(s[m][i])
+def at_mode(f, s, f0, tol, shift=0.0):
+    grid = np.arange(f0 - tol, f0 + tol + 1e-9, 0.005) if tol else np.array([f0])
+    return float(np.interp(grid - shift, f, s).max())
 
 
-def local_width(f, s, f0, drop=3.0):
-    bm = (((f >= f0 - 0.5) & (f <= f0 - 0.25)) | ((f >= f0 + 0.25) & (f <= f0 + 0.5)))
-    if not bm.any():
-        return None, None
-    base = float(np.mean(s[bm]))
-    th = base - drop
-    ci = int(np.argmin(np.abs(f - f0)))
-    lo = hi = ci
-    while lo > 0 and s[lo] <= th:
-        lo -= 1
-    while hi < len(f) - 1 and s[hi] <= th:
-        hi += 1
-    return base, (f[hi] - f[lo]) * 1000.0
+def worst_over_tolerance(f, s, f0, tol):
+    sh = LEN_ERR * f0
+    return max(at_mode(f, s, f0, tol, x) for x in (0.0, sh, -sh))
 
 
-def score(f, s):
-    out = []
+def flatness(f, s, f0):
+    m = (f >= f0 - FLAT_HALFWIDTH) & (f <= f0 + FLAT_HALFWIDTH)
+    return float(s[m].max() - s[m].min())
+
+
+def worst_peak_near(f, s, f0, span=0.5):
+    m = (f >= f0 - span) & (f <= f0 + span)
+    ff, ss = f[m], s[m]
+    i = int(np.argmax(ss))
+    return float(ss[i]), float(ff[i])
+
+
+def nulls(f, s, depth=-15.0):
+    return [(float(f[i]), float(s[i])) for i in range(1, len(f) - 1)
+            if s[i] < s[i - 1] and s[i] < s[i + 1] and s[i] < depth]
+
+
+def main(argv):
+    pa = argv[0] if len(argv) > 0 else 'v6_s6move'
+    pb = argv[1] if len(argv) > 1 else 'v8_s6fan'
+    fa, sa = load(pa)
+    fb, sb = load(pb)
+
+    print('=' * 78)
+    print('S6 FAN ASSESSMENT   %s (no fan)  vs  %s (fan)' % (pa, pb))
+    print('  both must be the same mesh and the same drawn length - the fan is')
+    print('  intended to be the only variable.')
+    print('=' * 78)
+
+    print('\nMODE COMB - nominal, and worst under a +/-%.0f%% length error'
+          % (100 * LEN_ERR))
+    print('  %-11s %8s %9s %9s   %9s %9s   %s'
+          % ('mode', 'GHz', 'nom A', 'nom B', 'worst A', 'worst B', 'B verdict'))
+    failA = failB = 0
     for f0, lbl, tol in COMB:
-        grid = np.arange(f0 - tol, f0 + tol + 1e-9, 0.005) if tol else np.array([f0])
-        out.append(float(np.interp(grid, f, s).max()))
-    return out
+        na, nb = at_mode(fa, sa, f0, tol), at_mode(fb, sb, f0, tol)
+        wa, wb = worst_over_tolerance(fa, sa, f0, tol), worst_over_tolerance(fb, sb, f0, tol)
+        failA += wa > PASS_DB
+        failB += wb > PASS_DB
+        print('  %-11s %8.3f %9.2f %9.2f   %9.2f %9.2f   %s'
+              % (lbl, f0, na, nb, wa, wb, 'PASS' if wb <= PASS_DB else 'FLAG'))
+    print('  under tolerance: A %d/9 pass, B %d/9 pass' % (9 - failA, 9 - failB))
 
+    print('\nROBUSTNESS AND FLATNESS, per mode')
+    print('  %-11s %11s %11s   %11s %11s'
+          % ('mode', 'swing A', 'swing B', 'flatness A', 'flatness B'))
+    for f0, lbl, tol in COMB:
+        sh = LEN_ERR * f0
+        va = [at_mode(fa, sa, f0, tol, x) for x in (0.0, sh, -sh)]
+        vb = [at_mode(fb, sb, f0, tol, x) for x in (0.0, sh, -sh)]
+        print('  %-11s %11.2f %11.2f   %11.2f %11.2f'
+              % (lbl, max(va) - min(va), max(vb) - min(vb),
+                 flatness(fa, sa, f0), flatness(fb, sb, f0)))
+    print('  swing    = dB spread at the mode as the trace shifts +/-1%')
+    print('  flatness = dB peak-to-peak over the mode +/-%.0fMHz'
+          % (FLAT_HALFWIDTH * 1000))
 
-def s6_sensitivity(f, s, f_zero, mode=STORAGE1, d=0.01):
-    """S21 at `mode` if S6's length is wrong by +/-d. The zero moves to
-    f_zero/(1+d); the local response shifts with it, so the perturbed value at
-    `mode` is the measured value at mode - dF."""
-    out = {}
-    for sign, tag in ((+1, 'longer'), (-1, 'shorter')):
-        dF = f_zero / (1 + sign * d) - f_zero
-        out[tag] = float(np.interp(mode - dF, f, s))
-    return out
+    print('\nWORST TRANSMISSION PEAK within 500MHz of each mode')
+    print('  %-11s %20s %20s' % ('mode', 'A', 'B'))
+    for f0, lbl, _t in COMB:
+        pa_db, pa_f = worst_peak_near(fa, sa, f0)
+        pb_db, pb_f = worst_peak_near(fb, sb, f0)
+        print('  %-11s %9.2fdB @%.3f %9.2fdB @%.3f' % (lbl, pa_db, pa_f, pb_db, pb_f))
 
-
-def main():
-    if not os.path.exists(FAN):
-        raise SystemExit('%s not found - the fan solve has not finished' % FAN)
-    fb, sb = load(BASE)
-    ff, sf = load(FAN)
-
-    z_b, d_b = find_zero(fb, sb, 5.60, 6.10)
-    z_f, d_f = find_zero(ff, sf, 5.55, 6.10)
-    base_b, w_b = local_width(fb, sb, z_b)
-    base_f, w_f = local_width(ff, sf, z_f)
-
-    print('=' * 78)
-    print('Rev 21 - S6 FAN, mesh-matched against v6_s6move (same drawn length, no fan)')
-    print('=' * 78)
-    print('%-34s %14s %14s' % ('', 'NO FAN', 'WITH FAN'))
-    print('%-34s %14.3f %14.3f' % ('S6 zero (GHz)', z_b, z_f))
-    print('%-34s %14.1f %14.1f' % ('  depth (dB)', d_b, d_f))
-    print('%-34s %14.1f %14.1f' % ('  local baseline (dB)', base_b, base_f))
-    print('%-34s %14.0f %14.0f' % ('  width, -3dB vs baseline (MHz)', w_b, w_f))
-    for drop in (6.0, 10.0):
-        _, a = local_width(fb, sb, z_b, drop)
-        _, c = local_width(ff, sf, z_f, drop)
-        print('%-34s %14.0f %14.0f' % ('  width, -%.0fdB vs baseline (MHz)' % drop, a, c))
-    print('%-34s %+14.3f %s' % ('  offset from storage 1 (GHz)', z_b - STORAGE1,
-                                '%+14.3f' % (z_f - STORAGE1)))
-
-    print()
-    print('MODE-COMB, both probe mesh')
-    sb_sc, sf_sc = score(fb, sb), score(ff, sf)
-    print('  %-11s %8s %10s %10s %9s  %s' % ('mode', 'GHz', 'no fan', 'with fan', 'change', 'verdict'))
-    nfail = 0
-    for i, (f0, lbl, _t) in enumerate(COMB):
-        v = sf_sc[i]
-        ok = v <= PASS_DB
-        nfail += (not ok)
-        print('  %-11s %8.3f %10.2f %10.2f %+9.2f  %s'
-              % (lbl, f0, sb_sc[i], v, v - sb_sc[i], 'PASS' if ok else 'FLAG'))
-    print('  ---> %d/9 PASS' % (9 - nfail))
-
-    print()
-    print('THE HEADLINE: storage 1 under a +/-1%% S6 length error'.replace('%%', '%'))
-    a = s6_sensitivity(fb, sb, z_b)
-    b = s6_sensitivity(ff, sf, z_f)
-    print('  %-22s %12s %12s' % ('', 'NO FAN', 'WITH FAN'))
-    print('  %-22s %12.2f %12.2f' % ('nominal', np.interp(STORAGE1, fb, sb),
-                                     np.interp(STORAGE1, ff, sf)))
-    for tag in ('longer', 'shorter'):
-        print('  %-22s %12.2f %12.2f' % ('S6 1%% %s' % tag, a[tag], b[tag]))
-    wa, wb = max(a.values()), max(b.values())
-    print('  %-22s %12.2f %12.2f' % ('WORST', wa, wb))
-    print('  %-22s %12.2f %12.2f' % ('margin vs -20dB', PASS_DB - wa, PASS_DB - wb))
-    print('  -> %s' % ('FRAGILITY FIXED' if wb <= PASS_DB else
-                       'STILL FAILS under a 1% S6 error'))
-
-    print()
-    print('PREDICTION SCORECARD (HFSS/v8_prediction_locked.md)')
-    checks = [
-        ('1 zero in 5.75-5.88', 5.75 <= z_f <= 5.88, '%.3f GHz' % z_f),
-        ('2 storage 1 better than -30', sf_sc[2] < -30, '%.2f dB' % sf_sc[2]),
-        ('3 width >= 160 MHz', w_f >= 160, '%.0f MHz (was %.0f)' % (w_f, w_b)),
-        ('4 storage 1 worst <= -20', wb <= PASS_DB, '%.2f dB' % wb),
-        ('5 7.515 zero moved', None, 'see null list'),
-        ('6 still 9/9', nfail == 0, '%d/9' % (9 - nfail)),
-    ]
-    hit = 0
-    for name, ok, val in checks:
-        if ok is None:
-            print('  %-30s %-10s %s' % (name, 'n/a', val))
-        else:
-            hit += ok
-            print('  %-30s %-10s %s' % (name, 'HIT' if ok else 'MISS', val))
-    print('  -> %d of 5 testable predictions hit' % hit)
-
-    print()
-    nl = [(float(ff[i]), float(sf[i])) for i in range(1, len(ff) - 1)
-          if sf[i] < sf[i - 1] and sf[i] < sf[i + 1] and sf[i] < -15]
-    print('NULLS with the fan (%.1f-%.1fGHz): %s'
-          % (ff.min(), ff.max(), ', '.join('%.3f(%.0fdB)' % p for p in nl)))
-    nlb = [(float(fb[i]), float(sb[i])) for i in range(1, len(fb) - 1)
-           if sb[i] < sb[i - 1] and sb[i] < sb[i + 1] and sb[i] < -15]
-    print('NULLS without      : %s' % ', '.join('%.3f(%.0fdB)' % p for p in nlb))
+    print('\nNULLS (label-independent, no ownership claimed)')
+    print('  A: %s' % ', '.join('%.3f(%.0f)' % p for p in nulls(fa, sa)))
+    print('  B: %s' % ', '.join('%.3f(%.0f)' % p for p in nulls(fb, sb)))
     print('=' * 78)
     return 0
 
 
 if __name__ == '__main__':
-    sys.exit(main())
+    sys.exit(main(sys.argv[1:]))
