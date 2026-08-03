@@ -20,10 +20,23 @@ quantity**, and a fan is the standard way to buy it.
 |---|---|---|---|---|
 | 1 | S6 zero position | 5.900 | **5.75–5.88** | fan end-loading adds electrical length; theory correction says −2.08% → 5.777, but that formula has been percent-level wrong all campaign, so a band not a point |
 | 2 | S21 at storage 1 | −28.65 | **better than −30** | zero moves toward the mode |
-| 3 | S6 zero −30 dB width | 63 MHz | **wider, ≥ 80 MHz** | the whole point; if it does not widen, the fan is not doing its job |
+| 3 | S6 zero width, −3 dB below local baseline | 125 MHz | **wider, ≥ 160 MHz** | the whole point; if it does not widen, the fan is not doing its job |
 | 4 | storage 1 worst case under ±1% S6 | −14.65 (FAIL) | **passes, ≤ −20** | combination of centring and broadening |
 | 5 | 7.515 GHz S5+S6 zero | 7.515 | **moves** | Q1 showed it needs S6; changing S6's end changes the pair |
 | 6 | overall score | 9/9 | **9/9** | no mode should be given up |
+
+> **Correction to row 3, made after committing this file and before the solve
+> returned.** It originally read "−30 dB width, 63 MHz". That metric is
+> meaningless in this cascade: the composite floor is *already* below −30 dB
+> across 5.60–6.10 GHz, so an absolute threshold measures the neighbouring
+> stubs, not S6 — the exact effect §2.3 of the master notes warns about, and I
+> walked into it. The 63 MHz figure was never measured; it was an estimate
+> written from memory. Replaced with the local-baseline convention the fold
+> experiment already uses (baseline = mean over ±0.25–0.5 GHz excluding the
+> zero), on which the real baseline width is **125 MHz** (90 MHz at −6 dB,
+> 55 MHz at −10 dB). The prediction's substance is unchanged — the test is
+> still "does it broaden" — but the threshold is now on a metric that can
+> actually detect it.
 
 ## Falsifiers — what would mean the reasoning is wrong
 
